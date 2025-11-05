@@ -370,10 +370,10 @@
       <div class="opinion-section">
         <table style="width: 100%; border-spacing: 0;">
           <tr>
-            <td style="width: 100px; vertical-align: top; padding-right: 15px;">
+            <td style="width: 100px; vertical-align: middle; padding-right: 15px;">
               <img src="https://reports.vineyardtechnologies.org/osrs/images/LaserWolve.png" alt="LaserWolve" style="max-width: 100px; height: auto; display: block;">
             </td>
-            <td class="opinion-text" style="vertical-align: top;">
+            <td class="opinion-text" style="vertical-align: middle;">
               <p><em>Tuesday, October 29, 2025</em> — This week's high-risk picks are showing exceptional momentum. Members items like <a href="https://secure.runescape.com/m=itemdb_oldschool/viewitem?obj=4087" target="_blank" style="color: #8B4513; text-decoration: none; font-weight: bold;">Dragon Platelegs</a> and <a href="https://secure.runescape.com/m=itemdb_oldschool/viewitem?obj=4151" target="_blank" style="color: #8B4513; text-decoration: none; font-weight: bold;">Abyssal Whip</a> continue their upward trend, driven by increased PvP activity and new content updates.</p>
             </td>
           </tr>
@@ -547,9 +547,27 @@
     </div>
 
     <div class="footer">
-        <p><em>This is speculative analysis. Trade at your own risk.</em></p>
+        <p style="margin-bottom: 15px;"><em>This is speculative analysis. Trade at your own risk. <a href="https://vineyardtechnologies.org/unsubscribe" target="_blank" style="color: #ffffff;">Unsubscribe</a></em></p>
         <p><em><a href="https://vineyardtechnologies.org/products/mythic-market-mogul" target="_blank" style="color: #ffffff;">Mythic Market Mogul</a> and <a href="https://vineyardtechnologies.org/" target="_blank" style="color: #ffffff;">Vineyard Technologies</a> are not affiliated with <a href="https://www.jagex.com/" target="_blank" style="color: #ffffff;">Jagex Games Ltd</a>. <a href="https://oldschool.runescape.com/" target="_blank" style="color: #ffffff;">Old School RuneScape</a> and all related content are owned by <a href="https://www.jagex.com/" target="_blank" style="color: #ffffff;">Jagex Games Ltd</a>.</em></p>
     </div>
     </div>
+
+    <script>
+        // Hide unsubscribe link when JavaScript is enabled (browser only)
+        // In email clients, JavaScript won't run and the link will remain visible
+        document.addEventListener('DOMContentLoaded', function() {
+            const footerLinks = document.querySelectorAll('.footer a');
+            footerLinks.forEach(function(link) {
+                if (link.textContent.trim().toLowerCase() === 'unsubscribe') {
+                    link.style.display = 'none';
+                    // Also hide the preceding text if needed
+                    const parent = link.parentNode;
+                    if (parent.textContent.includes('Trade at your own risk.')) {
+                        parent.innerHTML = parent.innerHTML.replace(/\s*<a[^>]*>Unsubscribe<\/a>/i, '');
+                    }
+                }
+            });
+        });
+    </script>
 </body>
 </html>

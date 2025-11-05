@@ -568,9 +568,27 @@
     </div>
 
     <div class="footer">
-        <p><em>This is speculative analysis. Trade at your own risk. <a href="https://vineyardtechnologies.org/" target="_blank">Unsubscribe</a></em></p>
+        <p style="margin-bottom: 15px;"><em>This is speculative analysis. Trade at your own risk. <a href="https://vineyardtechnologies.org/unsubscribe" target="_blank">Unsubscribe</a></em></p>
         <p><em><a href="https://vineyardtechnologies.org/products/mythic-market-mogul" target="_blank">Mythic Market Mogul</a> and <a href="https://vineyardtechnologies.org/" target="_blank">Vineyard Technologies</a> are not affiliated with <a href="https://www.ccpgames.com/" target="_blank">CCP Games</a>. EVE Online and all related content are owned by <a href="https://www.ccpgames.com/" target="_blank">CCP Games</a>.</em></p>
     </div>
     </div>
+
+    <script>
+        // Hide unsubscribe link when JavaScript is enabled (browser only)
+        // In email clients, JavaScript won't run and the link will remain visible
+        document.addEventListener('DOMContentLoaded', function() {
+            const footerLinks = document.querySelectorAll('.footer a');
+            footerLinks.forEach(function(link) {
+                if (link.textContent.trim().toLowerCase() === 'unsubscribe') {
+                    link.style.display = 'none';
+                    // Also hide the preceding text if needed
+                    const parent = link.parentNode;
+                    if (parent.textContent.includes('Trade at your own risk.')) {
+                        parent.innerHTML = parent.innerHTML.replace(/\s*<a[^>]*>Unsubscribe<\/a>/i, '');
+                    }
+                }
+            });
+        });
+    </script>
 </body>
 </html>

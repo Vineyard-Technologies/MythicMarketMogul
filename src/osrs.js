@@ -65,7 +65,7 @@ function saveHistoricalData(data) {
  * @param {string} itemName - The item name
  * @param {number} currentPrice - Today's price from Weirdgloop
  * @param {number} volume - Today's volume from Weirdgloop
- * @returns {Object} Full price history for the item
+ * @returns {Object} Full price and volume history for the item
  */
 function updateLocalHistory(itemId, itemName, currentPrice, volume) {
   const historicalData = loadHistoricalData();
@@ -74,7 +74,8 @@ function updateLocalHistory(itemId, itemName, currentPrice, volume) {
   if (!historicalData[itemId]) {
     historicalData[itemId] = {
       name: itemName,
-      daily: {}
+      daily: {},
+      volume: {}
     };
   }
   
@@ -86,23 +87,17 @@ function updateLocalHistory(itemId, itemName, currentPrice, volume) {
   today.setUTCHours(0, 0, 0, 0);
   const todayTimestamp = today.getTime();
   
-  // Update or append today's price
+  // Update or append today's price and volume
   historicalData[itemId].daily[todayTimestamp] = currentPrice;
-  
-  // Keep only last 180 days to manage file size
-  const cutoffTimestamp = todayTimestamp - (180 * 24 * 60 * 60 * 1000);
-  const recentDaily = {};
-  Object.entries(historicalData[itemId].daily).forEach(([ts, price]) => {
-    if (parseInt(ts) >= cutoffTimestamp) {
-      recentDaily[ts] = price;
-    }
-  });
-  historicalData[itemId].daily = recentDaily;
+  historicalData[itemId].volume[todayTimestamp] = volume;
   
   // Save updated history
   saveHistoricalData(historicalData);
   
-  return { daily: historicalData[itemId].daily };
+  return { 
+    daily: historicalData[itemId].daily,
+    volume: historicalData[itemId].volume
+  };
 }
 
 // ===== API FUNCTIONS =====
