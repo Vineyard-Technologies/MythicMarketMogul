@@ -472,7 +472,7 @@ function generateEmailReport(osrsData) {
               <table>
                 <tr>
                   <td style="width: 32px; vertical-align: top;">
-                    <img src="https://secure.runescape.com/m=itemdb_oldschool/1761737389524_obj_sprite.gif?id=${item.id}" alt="${item.name}">
+                    <img src="https://secure.runescape.com/m=itemdb_oldschool/a=13/1762340401310_obj_sprite.gif?id=${item.id}" alt="${item.name}">
                   </td>
                   <td class="grid-item-content" style="vertical-align: top;">
                     <h4><a href="https://secure.runescape.com/m=itemdb_oldschool/viewitem?obj=${item.id}" target="_blank" style="color: #333; text-decoration: none;">${item.name}</a></h4>
