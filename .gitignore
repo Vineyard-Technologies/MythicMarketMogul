@@ -135,5 +135,5 @@ dist
 .yarn/install-state.gz
 .pnp.*
 
-# Subscriber emails (managed in Brevo)
-subscribers.json
+# market history files
+*-history.json
