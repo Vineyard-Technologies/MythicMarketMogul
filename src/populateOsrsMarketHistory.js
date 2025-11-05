@@ -28,11 +28,29 @@ async function fetchItemList() {
 async function fetchItemHistory(itemId) {
     console.log(`Fetching history for item ID: ${itemId}`);
     const response = await fetch(`${HISTORY_API_BASE}${itemId}`);
+    
+    // Check for rate limiting (429) or other error responses
     if (!response.ok) {
-        console.error(`Failed to fetch history for item ${itemId}: ${response.statusText}`);
-        return null;
+        if (response.status === 429) {
+            console.error(`\n❌ RATE LIMITED (HTTP 429) on item ${itemId}`);
+            console.error('Exiting script to avoid wasting requests. Please wait before running again.');
+            process.exit(1);
+        }
+        console.error(`\n❌ HTTP ${response.status} error for item ${itemId}: ${response.statusText}`);
+        console.error('Exiting script due to API error.');
+        process.exit(1);
     }
+    
     const data = await response.json();
+    
+    // Validate that we got usable data
+    if (!data || typeof data !== 'object') {
+        console.error(`\n❌ Invalid data returned for item ${itemId}`);
+        console.error('Expected an object but got:', typeof data);
+        console.error('Exiting script due to unusable data.');
+        process.exit(1);
+    }
+    
     return data;
 }
 
@@ -84,37 +102,36 @@ async function populateOsrsMarketHistory() {
             // Fetch history for this item
             const history = await fetchItemHistory(itemId);
             
-            if (history) {
-                historyData[itemId] = history;
-                
-                // Save progress after each item
-                await fs.writeFile(OUTPUT_FILE, JSON.stringify(historyData, null, 2));
-                
-                // Calculate progress statistics
-                const itemsCompleted = i + 1;
-                const itemsRemaining = itemIds.length - itemsCompleted;
-                const elapsedMs = Date.now() - startTime;
-                const elapsedSeconds = Math.floor(elapsedMs / 1000);
-                const elapsedMinutes = Math.floor(elapsedSeconds / 60);
-                const elapsedHours = Math.floor(elapsedMinutes / 60);
-                
-                // Calculate remaining time based on actual elapsed time
-                const avgTimePerItem = elapsedMs / itemsCompleted;
-                const remainingMs = avgTimePerItem * itemsRemaining;
-                const remainingSeconds = Math.floor(remainingMs / 1000);
-                const remainingMinutes = Math.floor(remainingSeconds / 60);
-                const remainingHours = Math.floor(remainingMinutes / 60);
-                
-                // Format elapsed time
-                const elapsedStr = `${elapsedHours}h ${elapsedMinutes % 60}m ${elapsedSeconds % 60}s`;
-                // Format remaining time
-                const remainingStr = `${remainingHours}h ${remainingMinutes % 60}m ${remainingSeconds % 60}s`;
-                
-                console.log(`✓ Completed item ${itemId}`);
-                console.log(`Progress: ${itemsCompleted}/${itemIds.length} items | ${itemsRemaining} remaining`);
-                console.log(`Elapsed: ${elapsedStr} | Remaining: ${remainingStr}`);
-                console.log('---');
-            }
+            // Save the data (fetchItemHistory will exit on errors)
+            historyData[itemId] = history;
+            
+            // Save progress after each item
+            await fs.writeFile(OUTPUT_FILE, JSON.stringify(historyData, null, 2));
+            
+            // Calculate progress statistics
+            const itemsCompleted = i + 1;
+            const itemsRemaining = itemIds.length - itemsCompleted;
+            const elapsedMs = Date.now() - startTime;
+            const elapsedSeconds = Math.floor(elapsedMs / 1000);
+            const elapsedMinutes = Math.floor(elapsedSeconds / 60);
+            const elapsedHours = Math.floor(elapsedMinutes / 60);
+            
+            // Calculate remaining time based on actual elapsed time
+            const avgTimePerItem = elapsedMs / itemsCompleted;
+            const remainingMs = avgTimePerItem * itemsRemaining;
+            const remainingSeconds = Math.floor(remainingMs / 1000);
+            const remainingMinutes = Math.floor(remainingSeconds / 60);
+            const remainingHours = Math.floor(remainingMinutes / 60);
+            
+            // Format elapsed time
+            const elapsedStr = `${elapsedHours}h ${elapsedMinutes % 60}m ${elapsedSeconds % 60}s`;
+            // Format remaining time
+            const remainingStr = `${remainingHours}h ${remainingMinutes % 60}m ${remainingSeconds % 60}s`;
+            
+            console.log(`✓ Completed item ${itemId}`);
+            console.log(`Progress: ${itemsCompleted}/${itemIds.length} items | ${itemsRemaining} remaining`);
+            console.log(`Elapsed: ${elapsedStr} | Remaining: ${remainingStr}`);
+            console.log('---');
             
             // Wait before next request (except for the last item)
             if (i < itemIds.length - 1) {
