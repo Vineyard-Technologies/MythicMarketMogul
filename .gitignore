@@ -136,4 +136,4 @@ dist
 .pnp.*
 
 # market history files
-*-history.json
+data/
