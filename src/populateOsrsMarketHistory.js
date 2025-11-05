@@ -108,6 +108,14 @@ async function populateOsrsMarketHistory() {
             // Save progress after each item
             await fs.writeFile(OUTPUT_FILE, JSON.stringify(historyData, null, 2));
             
+            console.log(`✓ Completed item ${itemId}`);
+            
+            // Wait before next request (except for the last item)
+            if (i < itemIds.length - 1) {
+                console.log(`Waiting ${DELAY_MS / 1000} seconds before next request...`);
+                await delay(DELAY_MS);
+            }
+            
             // Calculate progress statistics
             const itemsCompleted = i + 1;
             const itemsRemaining = itemIds.length - itemsCompleted;
@@ -128,16 +136,9 @@ async function populateOsrsMarketHistory() {
             // Format remaining time
             const remainingStr = `${remainingHours}h ${remainingMinutes % 60}m ${remainingSeconds % 60}s`;
             
-            console.log(`✓ Completed item ${itemId}`);
             console.log(`Progress: ${itemsCompleted}/${itemIds.length} items | ${itemsRemaining} remaining`);
             console.log(`Elapsed: ${elapsedStr} | Remaining: ${remainingStr}`);
             console.log('---');
-            
-            // Wait before next request (except for the last item)
-            if (i < itemIds.length - 1) {
-                console.log(`Waiting ${DELAY_MS / 1000} seconds before next request...`);
-                await delay(DELAY_MS);
-            }
         }
         
         console.log('✓ All items processed successfully!');
