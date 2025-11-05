@@ -29,15 +29,6 @@ jobs:
         GITHUB_ACTIONS: 'true'
         BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
       run: node src/eve.js
-      
-    - name: Prepare reports directory
-      run: |
-        mkdir -p docs/eve/archive
-        REPORT_DATE=$(date +%Y-%m-%d)
-        
-        # Archive dated report (index.html is already updated by eve.js)
-        cp docs/eve/index.html docs/eve/archive/${REPORT_DATE}.html
-        cp eve-results.json docs/eve/archive/${REPORT_DATE}.json
         
     - name: Commit and push reports
       run: |

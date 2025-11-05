@@ -31,15 +31,6 @@ jobs:
         GITHUB_ACTIONS: 'true'
         BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
       run: node src/osrs.js
-      
-    - name: Prepare reports directory
-      run: |
-        mkdir -p docs/osrs/archive
-        REPORT_DATE=$(date +%Y-%m-%d)
-        
-        # Archive dated report (index.html is already updated by osrs.js)
-        cp docs/osrs/index.html docs/osrs/archive/${REPORT_DATE}.html
-        cp osrs-results.json docs/osrs/archive/${REPORT_DATE}.json
         
     - name: Commit and push reports
       run: |

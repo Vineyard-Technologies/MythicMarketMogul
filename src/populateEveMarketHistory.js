@@ -26,6 +26,13 @@ async function fetchAllTypeIds() {
         console.log(`Fetching type IDs from page ${page}...`);
         const response = await fetch(`${TYPES_API_BASE}${page}`);
         
+        // 404 means we've reached the end of available pages
+        if (response.status === 404) {
+            console.log(`Page ${page} not found - reached end of type IDs`);
+            hasMorePages = false;
+            break;
+        }
+        
         if (!response.ok) {
             console.error(`\n❌ HTTP ${response.status} error fetching type IDs page ${page}: ${response.statusText}`);
             console.error('Exiting script due to API error.');
