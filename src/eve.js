@@ -1,69 +1,16 @@
-/**
- * EVE Online Investment Analyzer
- * Analyzes EVE Online market data in Jita to find profitable investment opportunities
- */
-
 import fs from 'fs';
 import { createRequire } from 'module';
-import yaml from 'js-yaml';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import * as brevo from '@getbrevo/brevo';
 
-// Get directory name for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// Load package.json for app name and version
 const require = createRequire(import.meta.url);
 const pkg = require('../package.json');
-
-// EVE Online constants
 const JITA_REGION_ID = 10000002; // The Forge (Jita)
-
-// Currently 51,135 items in EVE. 19,118 are tradeable (have marketGroupID).
-// We can get a full list of all items from https://esi.evetech.net/universe/types,
-// but it doesn't include info like their name and if they're marketable or not.
-// We'd have to call https://esi.evetech.net/universe/types/{type_id} on all 50,000+
-// items. It's better to use the static download: https://developers.eveonline.com/static-data
-
-// sde:
-//   buildNumber: 3077380
-//   releaseDate: '2025-10-28T11:14:15Z'
-
-/**
- * Loads tradeable items from EVE Online Static Data Export (SDE)
- * @returns {Array} Array of tradeable items with id and name
- */
-function loadTradeableItemsFromSDE() {
-  const typesFilePath = path.join(__dirname, '..', 'data', 'types.yaml');
-  
-  if (!fs.existsSync(typesFilePath)) {
-    throw new Error(`types.yaml not found at ${typesFilePath}. Please run eveDataCleaner.js first.`);
-  }
-  
-  console.log('📊 Loading tradeable items from EVE SDE...');
-  const typesData = yaml.load(fs.readFileSync(typesFilePath, 'utf8'));
-  
-  const tradeableItems = [];
-  
-  for (const [typeId, typeData] of Object.entries(typesData)) {
-    // The cleaned data already has only tradeable items
-    // Just extract the name (which is already in English)
-    const itemName = typeData.name || `Item ${typeId}`;
-    
-    tradeableItems.push({
-      id: parseInt(typeId),
-      name: itemName
-    });
-  }
-  
-  console.log(`✅ Loaded ${tradeableItems.length} tradeable items from SDE`);
-  return tradeableItems;
-}
-
-// Load all tradeable items from SDE
-const TRADEABLE_ITEMS = loadTradeableItemsFromSDE();
+const HISTORY_FILE = path.join(__dirname, '..', 'data', 'eve-history.json');
+const ITEMS_FILE = path.join(__dirname, '..', 'data', 'eve-items.json');
 
 // Dynamically construct USER_AGENT from GitHub Actions environment
 const getGitHubEmail = () => {
@@ -88,47 +35,10 @@ let USER_AGENT = null;
 
 const getUserAgent = () => {
   if (!USER_AGENT) {
-    try {
-      USER_AGENT = `${pkg.name}/${pkg.version} (${getGitHubEmail()}; +${getRepoUrl()})`;
-    } catch (error) {
-      // Fallback for local development
-      USER_AGENT = `${pkg.name}/${pkg.version} (local-development)`;
-    }
+    USER_AGENT = `${pkg.name}/${pkg.version} (${getGitHubEmail()}; +${getRepoUrl()})`;
   }
   return USER_AGENT;
 };
-
-// ===== API FUNCTIONS =====
-
-/**
- * Fetches market history for an item in a specific region
- * @param {number} regionId - EVE region ID
- * @param {number} typeId - Item type ID
- * @returns {Promise<Array>} Market history data
- */
-async function fetchMarketHistory(regionId, typeId) {
-  const url = `https://esi.evetech.net/latest/markets/${regionId}/history/?datasource=tranquility&type_id=${typeId}`;
-  
-  try {
-    const response = await fetch(url, {
-      headers: {
-        'Accept': 'application/json',
-        'User-Agent': getUserAgent(),
-        'X-Compatibility-Date': '2025-09-30'
-      }
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to fetch market data: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error(`Error fetching market data for region ${regionId}:`, error.message);
-    return null;
-  }
-}
 
 /**
  * Delays execution for a specified time
@@ -137,6 +47,9 @@ async function fetchMarketHistory(regionId, typeId) {
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
+
+// ===== MARKET HISTORY POPULATION FUNCTIONS =====
+// NOTE: Population logic has been moved to main() function
 
 // ===== ANALYSIS FUNCTIONS =====
 
@@ -302,12 +215,13 @@ function analyzeItem(history, itemInfo) {
 // ===== MAIN APPLICATION =====
 
 /**
- * Automated EVE analysis
+ * Automated EVE analysis for GitHub Actions
  * @param {Object} options - Configuration options
+ * @param {string} options.logFile - Path to log file
  * @returns {Promise<Object>} Analysis results
  */
 export async function runEVEAutomated(options = {}) {
-  const { isGitHubActions = false, logFile = null } = options;
+  const { logFile = null } = options;
   
   const logMessage = (message) => {
     console.log(message);
@@ -317,49 +231,70 @@ export async function runEVEAutomated(options = {}) {
     }
   };
 
-  logMessage('🚀 EVE Online Investment Analyzer (Automated)');
-  logMessage('============================================');
+  logMessage('🚀 EVE Online Investment Analyzer');
+  logMessage('===================================');
   
-  logMessage(`Analyzing ALL available items`);
-  logMessage(`Mode: ${isGitHubActions ? 'GitHub Actions' : 'Local'}`);
+  logMessage(`Analyzing items from history data`);
   logMessage('');
 
-  // Items are already loaded from SDE at module level
-  logMessage(`✅ Using ${TRADEABLE_ITEMS.length} tradeable items for analysis`);
+  // Load history data
+  let historyData = null;
+  try {
+    const historyContent = await fs.promises.readFile(HISTORY_FILE, 'utf-8');
+    historyData = JSON.parse(historyContent);
+    logMessage(`✅ Loaded history for ${Object.keys(historyData).length} items`);
+  } catch (error) {
+    throw new Error(`Could not load history data: ${error.message}`);
+  }
 
-  // Analyze ALL items (no limit)
-  const shuffledItems = [...TRADEABLE_ITEMS].sort(() => Math.random() - 0.5);
-  const itemsToAnalyze = shuffledItems;
+  // Load item names from eve-items.json
+  let itemsData = null;
+  try {
+    const itemsContent = await fs.promises.readFile(ITEMS_FILE, 'utf-8');
+    itemsData = JSON.parse(itemsContent);
+    logMessage(`✅ Loaded ${Object.keys(itemsData).length} item names`);
+  } catch (error) {
+    throw new Error(`Could not load items data: ${error.message}`);
+  }
 
-  logMessage(`Analyzing ALL ${itemsToAnalyze.length} items...`);
+  // Create a reverse lookup map (typeId -> name)
+  const typeIdToName = {};
+  for (const [name, typeId] of Object.entries(itemsData)) {
+    typeIdToName[typeId] = name;
+  }
+
   logMessage('');
 
   const results = [];
   let itemsChecked = 0;
   let successfulAnalyses = 0;
 
-  for (let i = 0; i < itemsToAnalyze.length; i++) {
-    const item = itemsToAnalyze[i];
+  // Analyze all items in history data
+  const typeIds = Object.keys(historyData);
+  
+  for (let i = 0; i < typeIds.length; i++) {
+    const typeId = typeIds[i];
+    const history = historyData[typeId];
     itemsChecked++;
     
     // Progress update every 100 items
-    if (itemsChecked % 100 === 0 || itemsChecked === itemsToAnalyze.length) {
-      logMessage(`Progress: ${itemsChecked}/${itemsToAnalyze.length} (${successfulAnalyses} analyzed)`);
+    if (itemsChecked % 100 === 0 || itemsChecked === typeIds.length) {
+      logMessage(`Progress: ${itemsChecked}/${typeIds.length} (${successfulAnalyses} analyzed)`);
     }
     
-    const history = await fetchMarketHistory(JITA_REGION_ID, item.id);
-    
     if (history && history.length > 0) {
-      const analysis = analyzeItem(history, item);
+      const itemInfo = {
+        id: parseInt(typeId),
+        name: typeIdToName[typeId] || `Item ${typeId}`
+      };
+      
+      const analysis = analyzeItem(history, itemInfo);
       
       if (analysis) {
         results.push(analysis);
         successfulAnalyses++;
       }
     }
-    
-    // Rate limiting
-    await delay(1000);
   }
 
   logMessage('');
@@ -586,22 +521,97 @@ async function sendNewsletter(subscribers) {
 // ===== GITHUB ACTIONS RUNNER =====
 
 /**
- * Main entry point when run directly (e.g., node eve.js or GitHub Actions)
+ * Main entry point for GitHub Actions workflow
  */
 async function main() {
-  const IS_GITHUB_ACTIONS = process.env.GITHUB_ACTIONS === 'true';
-
-  console.log('🚀 EVE Online GitHub Actions Analysis');
-  console.log('====================================');
-  console.log(`Analyzing ALL available items`);
-  console.log(`Environment: ${IS_GITHUB_ACTIONS ? 'GitHub Actions' : 'Local'}`);
+  console.log('🚀 EVE Online Market Analyzer');
+  console.log('==============================');
+  console.log('Running in GitHub Actions');
   console.log('');
 
   const startTime = Date.now();
   
   try {
+    // STEP 1: Populate eve-history.json by fetching from ESI API
+    console.log('📊 Step 1: Populating market history from ESI API...');
+    console.log('');
+    
+    // Load items from eve-items.json
+    const itemsFilePath = path.join(__dirname, '..', 'data', 'eve-items.json');
+    const itemsData = JSON.parse(await fs.promises.readFile(itemsFilePath, 'utf-8'));
+    const itemNames = Object.keys(itemsData);
+    const totalItems = itemNames.length;
+    
+    console.log(`Found ${totalItems} items to fetch`);
+    console.log('');
+    
+    // Load existing history if available
+    let historyData = {};
+    try {
+      const existingData = await fs.promises.readFile(HISTORY_FILE, 'utf-8');
+      historyData = JSON.parse(existingData);
+      console.log(`Loaded existing history for ${Object.keys(historyData).length} items`);
+    } catch (error) {
+      console.log('No existing history file found, starting fresh');
+    }
+    
+    // Fetch history for each item
+    let fetched = 0;
+    let errors = 0;
+    
+    for (let i = 0; i < totalItems; i++) {
+      const itemName = itemNames[i];
+      const typeId = itemsData[itemName];
+      
+      // Progress update every 100 items
+      if ((i + 1) % 100 === 0) {
+        console.log(`Progress: ${i + 1}/${totalItems} (${fetched} fetched, ${errors} errors)`);
+      }
+      
+      // Fetch market history from ESI API
+      const url = `https://esi.evetech.net/latest/markets/${JITA_REGION_ID}/history/?datasource=tranquility&type_id=${typeId}`;
+      
+      try {
+        const response = await fetch(url, {
+          headers: {
+            'Accept': 'application/json',
+            'User-Agent': getUserAgent(),
+            'X-Compatibility-Date': '2025-09-30'
+          }
+        });
+        
+        if (response.ok) {
+          const history = await response.json();
+          historyData[typeId] = history;
+          fetched++;
+        } else if (response.status === 404) {
+          // Item not marketable in this region, skip
+          continue;
+        } else {
+          console.error(`Error fetching ${itemName} (${typeId}): HTTP ${response.status}`);
+          errors++;
+        }
+      } catch (error) {
+        console.error(`Error fetching ${itemName} (${typeId}): ${error.message}`);
+        errors++;
+      }
+      
+      // Small delay to avoid rate limiting
+      await delay(100);
+    }
+    
+    // Save the populated history
+    await fs.promises.writeFile(HISTORY_FILE, JSON.stringify(historyData, null, 2));
+    console.log('');
+    console.log(`✅ Populated history: ${fetched} items fetched, ${errors} errors`);
+    console.log(`Saved to ${HISTORY_FILE}`);
+    console.log('');
+    
+    // STEP 2: Run analysis using the populated data
+    console.log('📊 Step 2: Analyzing market data...');
+    console.log('');
+    
     const results = await runEVEAutomated({
-      isGitHubActions: IS_GITHUB_ACTIONS,
       logFile: 'eve-analysis.log'
     });
     
@@ -611,6 +621,7 @@ async function main() {
     // Add metadata
     results.metadata = {
       itemsAnalyzed: results.totalAnalyzed || 0,
+      itemsFetched: fetched,
       analysisTime: `${Math.floor(analysisTime / 60)}m ${analysisTime % 60}s`,
       timestamp: new Date().toISOString(),
       environment: 'GitHub Actions'
@@ -625,6 +636,7 @@ async function main() {
     
     console.log('\n✅ Analysis Complete!');
     console.log(`Total time: ${results.metadata.analysisTime}`);
+    console.log(`Items fetched: ${fetched}`);
     console.log(`Items analyzed: ${results.metadata.itemsAnalyzed}`);
     console.log('Results saved to eve-results.json');
     console.log('Updated docs/eve/index.html');
@@ -634,14 +646,13 @@ async function main() {
     console.log(`High Risk: ${results.highRisk?.length || 0} items`);
     console.log(`Low Risk: ${results.lowRisk?.length || 0} items`);
     
-    // Send newsletter if in GitHub Actions
-    if (IS_GITHUB_ACTIONS) {
-      const subscribers = await loadSubscribers();
-      await sendNewsletter(subscribers);
-    }
+    // Send newsletter
+    const subscribers = await loadSubscribers();
+    await sendNewsletter(subscribers);
     
   } catch (error) {
     console.error('❌ Analysis failed:', error.message);
+    console.error(error.stack);
     
     // Save error info
     const errorResult = {
