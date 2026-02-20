@@ -7,15 +7,66 @@ on:
   workflow_dispatch:
 
 jobs:
-  eve-analysis:
+  sort-items-and-regions:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    steps:
+    - name: Check if Wednesday
+      id: check-day
+      run: |
+        DAY=$(date -u +%u)
+        echo "day=$DAY" >> "$GITHUB_OUTPUT"
+        if [ "$DAY" = "3" ]; then
+          echo "is_wednesday=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "is_wednesday=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Checkout repository
+      if: steps.check-day.outputs.is_wednesday == 'true' || github.event_name == 'workflow_dispatch'
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      if: steps.check-day.outputs.is_wednesday == 'true' || github.event_name == 'workflow_dispatch'
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+
+    - name: Install dependencies
+      if: steps.check-day.outputs.is_wednesday == 'true' || github.event_name == 'workflow_dispatch'
+      run: npm install
+
+    - name: Sort items and regions
+      if: steps.check-day.outputs.is_wednesday == 'true' || github.event_name == 'workflow_dispatch'
+      run: node sortItemsAndRegions.js
+
+    - name: Commit sorted data
+      if: steps.check-day.outputs.is_wednesday == 'true' || github.event_name == 'workflow_dispatch'
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add data/eve-items.json data/eve-regions.json
+        git commit -m "Sort EVE items and regions by order volume - $(date +%Y-%m-%d)" || echo "No changes to commit"
+        git push
+
+  eve-analysis:
+    needs: sort-items-and-regions
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      models: read
     
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+      with:
+        ref: ${{ github.ref }}
       
+    - name: Pull latest changes
+      run: git pull --rebase origin ${{ github.ref_name }}
+
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
@@ -27,6 +78,7 @@ jobs:
     - name: Run EVE Analysis
       env:
         GITHUB_ACTIONS: 'true'
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
       run: node src/eve.js
         

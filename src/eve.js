@@ -250,6 +250,18 @@ function analyzeItem(history, itemInfo) {
   const currentPrice = history[history.length - 1].average;
   const currentVolume = history[history.length - 1].volume;
   
+  // Calculate short-term price changes (7-day and 30-day)
+  let priceChange7d = 0;
+  let priceChange30d = 0;
+  if (history.length >= 7) {
+    const price7dAgo = history[history.length - 7].average;
+    priceChange7d = price7dAgo > 0 ? ((currentPrice - price7dAgo) / price7dAgo) * 100 : 0;
+  }
+  if (history.length >= 30) {
+    const price30dAgo = history[history.length - 30].average;
+    priceChange30d = price30dAgo > 0 ? ((currentPrice - price30dAgo) / price30dAgo) * 100 : 0;
+  }
+  
   const investmentScore = calculateInvestmentScore(priceChange, volatility, momentum);
   
   // Determine risk level based on volatility
@@ -262,6 +274,8 @@ function analyzeItem(history, itemInfo) {
     name: itemInfo.name,
     currentPrice: Math.round(currentPrice),
     priceChange: priceChange.toFixed(2),
+    priceChange7d: priceChange7d.toFixed(2),
+    priceChange30d: priceChange30d.toFixed(2),
     volatility: volatility.toFixed(2),
     momentum: momentum.toFixed(2),
     volume: currentVolume,
@@ -375,11 +389,238 @@ export async function runEVEAutomated(options = {}) {
     .sort((a, b) => parseFloat(b.investmentScore) - parseFloat(a.investmentScore))
     .slice(0, 5);
 
+  // Compute market-wide overview stats
+  const allMomentums = results.map(r => parseFloat(r.momentum));
+  const avgMomentum = allMomentums.length > 0
+    ? (allMomentums.reduce((a, b) => a + b, 0) / allMomentums.length).toFixed(2)
+    : '0.00';
+  const itemsUp = results.filter(r => parseFloat(r.momentum) > 0).length;
+  const itemsDown = results.filter(r => parseFloat(r.momentum) < 0).length;
+  const itemsFlat = results.filter(r => parseFloat(r.momentum) === 0).length;
+  const allVolatilities = results.map(r => parseFloat(r.volatility));
+  const avgVolatility = allVolatilities.length > 0
+    ? (allVolatilities.reduce((a, b) => a + b, 0) / allVolatilities.length).toFixed(2)
+    : '0.00';
+
+  const marketOverview = {
+    totalItems: results.length,
+    avgMomentum,
+    avgVolatility,
+    itemsUp,
+    itemsDown,
+    itemsFlat
+  };
+
+  // Find notable movers (biggest gainers and losers by 7-day price change)
+  const sortedByChange = [...results]
+    .filter(r => parseFloat(r.priceChange7d) !== 0)
+    .sort((a, b) => parseFloat(b.priceChange7d) - parseFloat(a.priceChange7d));
+  
+  const notableMovers = {
+    biggestGainers: sortedByChange.slice(0, 3).map(r => ({
+      name: r.name,
+      priceChange7d: r.priceChange7d,
+      currentPrice: r.currentPrice,
+      volumeCategory: r.volumeCategory
+    })),
+    biggestLosers: sortedByChange.slice(-3).reverse().map(r => ({
+      name: r.name,
+      priceChange7d: r.priceChange7d,
+      currentPrice: r.currentPrice,
+      volumeCategory: r.volumeCategory
+    }))
+  };
+
   return {
     highRisk,
     lowRisk,
+    marketOverview,
+    notableMovers,
     totalAnalyzed: successfulAnalyses,
     totalChecked: itemsChecked
+  };
+}
+
+// ===== AI OPINION GENERATION =====
+
+/**
+ * Generates an AI-written opinion piece using GitHub Models API.
+ * Uses the GITHUB_TOKEN that is automatically available in GitHub Actions.
+ * Falls back to a default opinion if the API call fails.
+ * @param {Object} analysisData - The analysis results with highRisk and lowRisk arrays
+ * @returns {Promise<Object>} Object with { introParagraph, detailParagraph } as plain text
+ */
+async function generateOpinion(analysisData, previousResults = null) {
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) {
+    console.log('⚠️ GITHUB_TOKEN not set. Using default opinion.');
+    return getDefaultOpinion(analysisData);
+  }
+
+  const { highRisk = [], lowRisk = [], marketOverview = {}, notableMovers = {} } = analysisData;
+
+  // Build a summary of the recommended items with price history
+  const highRiskSummary = highRisk.map(item =>
+    `- ${item.name}: ${formatISK(item.currentPrice)}, Volume: ${item.volumeCategory}, Volatility: ${item.volatility}%, Momentum: ${item.momentum > 0 ? '+' : ''}${item.momentum}%, 7d change: ${item.priceChange7d > 0 ? '+' : ''}${item.priceChange7d}%, 30d change: ${item.priceChange30d > 0 ? '+' : ''}${item.priceChange30d}%`
+  ).join('\n');
+
+  const lowRiskSummary = lowRisk.map(item =>
+    `- ${item.name}: ${formatISK(item.currentPrice)}, Volume: ${item.volumeCategory}, Volatility: ${item.volatility}%, Momentum: ${item.momentum > 0 ? '+' : ''}${item.momentum}%, 7d change: ${item.priceChange7d > 0 ? '+' : ''}${item.priceChange7d}%, 30d change: ${item.priceChange30d > 0 ? '+' : ''}${item.priceChange30d}%`
+  ).join('\n');
+
+  // Market-wide trends
+  const marketOverviewText = marketOverview.totalItems
+    ? `\n\nMARKET-WIDE TRENDS:\n- ${marketOverview.totalItems} items tracked\n- Average momentum across all items: ${marketOverview.avgMomentum}%\n- Average volatility across all items: ${marketOverview.avgVolatility}%\n- Items trending up: ${marketOverview.itemsUp} | down: ${marketOverview.itemsDown} | flat: ${marketOverview.itemsFlat}`
+    : '';
+
+  // Notable movers
+  let moversText = '';
+  if (notableMovers.biggestGainers?.length > 0 || notableMovers.biggestLosers?.length > 0) {
+    moversText = '\n\nNOTABLE MOVERS (7-day):';
+    if (notableMovers.biggestGainers?.length > 0) {
+      moversText += '\nBiggest Gainers:';
+      for (const g of notableMovers.biggestGainers) {
+        moversText += `\n- ${g.name}: ${g.priceChange7d > 0 ? '+' : ''}${g.priceChange7d}% (${formatISK(g.currentPrice)}, Volume: ${g.volumeCategory})`;
+      }
+    }
+    if (notableMovers.biggestLosers?.length > 0) {
+      moversText += '\nBiggest Losers:';
+      for (const l of notableMovers.biggestLosers) {
+        moversText += `\n- ${l.name}: ${l.priceChange7d > 0 ? '+' : ''}${l.priceChange7d}% (${formatISK(l.currentPrice)}, Volume: ${l.volumeCategory})`;
+      }
+    }
+  }
+
+  // Historical comparison with yesterday's picks
+  let comparisonText = '';
+  if (previousResults && !previousResults.error) {
+    const prevHighNames = (previousResults.highRisk || []).map(i => i.name);
+    const prevLowNames = (previousResults.lowRisk || []).map(i => i.name);
+    const currHighNames = highRisk.map(i => i.name);
+    const currLowNames = lowRisk.map(i => i.name);
+
+    const newHighRisk = currHighNames.filter(n => !prevHighNames.includes(n));
+    const droppedHighRisk = prevHighNames.filter(n => !currHighNames.includes(n));
+    const newLowRisk = currLowNames.filter(n => !prevLowNames.includes(n));
+    const droppedLowRisk = prevLowNames.filter(n => !currLowNames.includes(n));
+
+    if (newHighRisk.length > 0 || droppedHighRisk.length > 0 || newLowRisk.length > 0 || droppedLowRisk.length > 0) {
+      comparisonText = '\n\nCHANGES FROM YESTERDAY:';
+      if (newHighRisk.length > 0) comparisonText += `\n- New high-risk picks: ${newHighRisk.join(', ')}`;
+      if (droppedHighRisk.length > 0) comparisonText += `\n- Dropped from high-risk: ${droppedHighRisk.join(', ')}`;
+      if (newLowRisk.length > 0) comparisonText += `\n- New low-risk picks: ${newLowRisk.join(', ')}`;
+      if (droppedLowRisk.length > 0) comparisonText += `\n- Dropped from low-risk: ${droppedLowRisk.join(', ')}`;
+    } else {
+      comparisonText = '\n\nCHANGES FROM YESTERDAY:\n- Same picks as yesterday — no changes to the lineup.';
+    }
+  }
+
+  const prompt = `You are Foggle Lopperbottom, a savvy EVE Online market analyst who writes daily trading opinion pieces. You have a casual but knowledgeable tone — you speak like an experienced trader sharing tips with friends. You know EVE Online lore, items, and market mechanics well.
+
+Here are today's recommended items:
+
+HIGH RISK (volatile, speculative):
+${highRiskSummary}
+
+LOW RISK (stable, consistent):
+${lowRiskSummary}${marketOverviewText}${moversText}${comparisonText}
+
+Write a short opinion piece with exactly TWO paragraphs:
+
+1. FIRST PARAGRAPH: A brief commentary (2-3 sentences) on the low-risk picks — what makes them interesting today, why traders should consider them. You can reference market-wide trends or notable movers if relevant. Start directly with your analysis (no date prefix, that's added separately).
+
+2. SECOND PARAGRAPH: A brief commentary (2-3 sentences) on the high-risk picks — highlight 1-2 specific items by name that look especially promising, reference their price trajectory (7d/30d changes) if noteworthy, and mention if they're new to the list or have been consistently recommended.
+
+Rules:
+- Keep it concise — each paragraph should be 2-3 sentences max
+- Sound natural and conversational, like you're chatting with fellow capsuleers
+- Reference specific item names from the data
+- Use the market overview, notable movers, and changes from yesterday to add color and context where relevant — don't just repeat the numbers
+- Do NOT use markdown formatting, just plain text
+- Do NOT include any HTML tags
+- Do NOT start with a date
+- Separate the two paragraphs with exactly |||SPLIT||| on its own line`;
+
+  try {
+    console.log('🤖 Generating AI opinion via GitHub Models...');
+    const response = await fetch('https://models.github.ai/inference/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: process.env.AI_MODEL || 'openai/gpt-4o-mini',
+        messages: [
+          { role: 'user', content: prompt }
+        ],
+        max_tokens: 400,
+        temperature: 0.8
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`❌ GitHub Models API error (HTTP ${response.status}): ${errorText}`);
+      return getDefaultOpinion(analysisData);
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content?.trim();
+
+    if (!content) {
+      console.error('❌ Empty response from GitHub Models API');
+      return getDefaultOpinion(analysisData);
+    }
+
+    // Split into two paragraphs
+    const parts = content.split('|||SPLIT|||').map(p => p.trim());
+    if (parts.length >= 2) {
+      console.log('✅ AI opinion generated successfully');
+      return {
+        introParagraph: parts[0],
+        detailParagraph: parts[1]
+      };
+    } else {
+      // Fallback: try splitting on double newline
+      const fallbackParts = content.split(/\n\n+/).map(p => p.trim()).filter(p => p.length > 0);
+      if (fallbackParts.length >= 2) {
+        console.log('✅ AI opinion generated successfully (fallback split)');
+        return {
+          introParagraph: fallbackParts[0],
+          detailParagraph: fallbackParts[1]
+        };
+      }
+      console.log('✅ AI opinion generated (single block)');
+      return {
+        introParagraph: content,
+        detailParagraph: ''
+      };
+    }
+  } catch (error) {
+    console.error(`❌ Failed to generate AI opinion: ${error.message}`);
+    return getDefaultOpinion(analysisData);
+  }
+}
+
+/**
+ * Returns a default opinion when AI generation is unavailable
+ * @param {Object} analysisData - The analysis results
+ * @returns {Object} Object with { introParagraph, detailParagraph }
+ */
+function getDefaultOpinion(analysisData) {
+  const { highRisk = [], lowRisk = [] } = analysisData;
+
+  const lowRiskNames = lowRisk.slice(0, 3).map(i => i.name).join(', ');
+  const topHighRisk = highRisk[0];
+
+  return {
+    introParagraph: lowRisk.length > 0
+      ? `The low-risk segment continues to show steady performance with items like ${lowRiskNames}. Their consistent volume and low volatility make them solid choices for traders looking to preserve capital.`
+      : 'The low-risk segment is quiet today — check back tomorrow for new opportunities.',
+    detailParagraph: topHighRisk
+      ? `On the high-risk side, keep an eye on ${topHighRisk.name} at ${formatISK(topHighRisk.currentPrice)} with ${topHighRisk.momentum > 0 ? '+' : ''}${topHighRisk.momentum}% momentum. Volatile picks like these can pay off big if you time your trades right.`
+      : 'No standout high-risk picks today — sometimes the best trade is no trade at all.'
   };
 }
 
@@ -388,9 +629,10 @@ export async function runEVEAutomated(options = {}) {
 /**
  * Generates HTML email report from EVE analysis results
  * @param {Object} eveData - EVE analysis results
+ * @param {Object} opinion - AI-generated opinion { introParagraph, detailParagraph }
  * @returns {string} HTML email report
  */
-function generateEmailReport(eveData) {
+function generateEmailReport(eveData, opinion) {
   const currentDate = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
@@ -487,8 +729,39 @@ ${generateItemsHtml(lowRisk.slice(2, 4), 'low-risk-col2')}
     /<div class="content">[\s\S]*?<\/div>\s*<aside class="opinion-column">/,
     `<div class="content">\n${contentHtml}\n    </div>\n    \n    <aside class="opinion-column">`
   );
+
+  // Update the opinion section
+  if (opinion) {
+    // Update the intro paragraph (the one next to the portrait)
+    template = template.replace(
+      /(<td class="opinion-text" style="vertical-align: middle;">\s*<p style="margin: 0;">\s*)<em>[^<]*<\/em>[^<]*(<\/p>)/s,
+      `$1<em>${currentDate}</em> — ${escapeHtml(opinion.introParagraph)}$2`
+    );
+
+    // Update the detail paragraph
+    if (opinion.detailParagraph) {
+      template = template.replace(
+        /(<td colspan="2" style="padding-top: 12px;">\s*<p>)[\s\S]*?(<\/p>\s*<\/td>)/,
+        `$1${escapeHtml(opinion.detailParagraph)}$2`
+      );
+    }
+  }
   
   return template;
+}
+
+/**
+ * Escapes HTML special characters in a string
+ * @param {string} text - Text to escape
+ * @returns {string} Escaped text
+ */
+function escapeHtml(text) {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 // ===== NEWSLETTER FUNCTIONS =====
@@ -761,11 +1034,24 @@ async function main() {
       environment: 'GitHub Actions'
     };
     
+    // Load previous results for historical comparison
+    let previousResults = null;
+    try {
+      const prevData = fs.readFileSync('eve-results.json', 'utf-8');
+      previousResults = JSON.parse(prevData);
+      console.log('📋 Loaded previous results for comparison');
+    } catch (e) {
+      console.log('ℹ️ No previous results found for comparison');
+    }
+    
     // Save results to JSON
     fs.writeFileSync('eve-results.json', JSON.stringify(results, null, 2));
     
+    // Generate AI opinion piece
+    const opinion = await generateOpinion(results, previousResults);
+    
     // Generate and update the index.html file
-    const reportHtml = generateEmailReport(results);
+    const reportHtml = generateEmailReport(results, opinion);
     fs.writeFileSync('docs/eve/index.html', reportHtml);
     
     console.log('\n✅ Analysis Complete!');
@@ -780,9 +1066,9 @@ async function main() {
     console.log(`High Risk: ${results.highRisk?.length || 0} items`);
     console.log(`Low Risk: ${results.lowRisk?.length || 0} items`);
     
-    // Send newsletter
-    const subscribers = await loadSubscribers();
-    await sendNewsletter(subscribers);
+    // Send newsletter (disabled)
+    // const subscribers = await loadSubscribers();
+    // await sendNewsletter(subscribers);
     
   } catch (error) {
     console.error('❌ Analysis failed:', error.message);
@@ -800,8 +1086,8 @@ async function main() {
     
     fs.writeFileSync('eve-results.json', JSON.stringify(errorResult, null, 2));
     
-    // Generate error report and update index.html
-    const reportHtml = generateEmailReport(errorResult);
+    // Generate error report and update index.html (no opinion for errors)
+    const reportHtml = generateEmailReport(errorResult, null);
     fs.writeFileSync('docs/eve/index.html', reportHtml);
     
     process.exit(1);

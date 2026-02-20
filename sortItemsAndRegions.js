@@ -13,7 +13,7 @@ const __dirname = path.dirname(__filename);
 const ITEMS_FILE = path.join(__dirname, 'data', 'eve-items.json');
 const REGIONS_FILE = path.join(__dirname, 'data', 'eve-regions.json');
 const USER_AGENT = 'eve-market-sorter/1.0 (GitHub Actions)';
-const DELAY_MS = 3000; // Delay between requests (3 seconds)
+const DELAY_MS = 1000;
 
 /**
  * Delays execution for a specified time
@@ -24,16 +24,45 @@ function delay(ms) {
 }
 
 /**
+ * Fetches page 1 for a region and returns the X-Pages count
+ * @param {number} regionId - EVE region ID
+ * @returns {Promise<number>} Total number of order pages
+ */
+async function fetchPageCount(regionId) {
+  const url = `https://esi.evetech.net/latest/markets/${regionId}/orders/?datasource=tranquility&order_type=all&page=1`;
+  
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': USER_AGENT
+      }
+    });
+    
+    if (!response.ok) {
+      console.error(`  ❌ HTTP ${response.status}`);
+      return 0;
+    }
+    
+    const totalPages = parseInt(response.headers.get('X-Pages') || '1');
+    console.log(`  ${totalPages} pages`);
+    return totalPages;
+    
+  } catch (error) {
+    console.error(`  ❌ ${error.message}`);
+    return 0;
+  }
+}
+
+/**
  * Fetches all orders for a region across all pages
  * @param {number} regionId - EVE region ID
  * @returns {Promise<Array>} All orders for the region
  */
 async function fetchAllOrdersForRegion(regionId) {
-  console.log(`\nFetching orders for region ${regionId}...`);
+  console.log(`\nFetching all orders for region ${regionId}...`);
   const allOrders = [];
-  let page = 1;
   
-  // Fetch first page to get total page count
   const firstUrl = `https://esi.evetech.net/latest/markets/${regionId}/orders/?datasource=tranquility&order_type=all&page=1`;
   
   try {
@@ -52,12 +81,10 @@ async function fetchAllOrdersForRegion(regionId) {
     const firstPageOrders = await response.json();
     allOrders.push(...firstPageOrders);
     
-    // Get total pages from header
     const totalPages = parseInt(response.headers.get('X-Pages') || '1');
     console.log(`  Found ${totalPages} pages`);
     console.log(`  Page 1: ${firstPageOrders.length} orders`);
     
-    // Fetch remaining pages
     for (let page = 2; page <= totalPages; page++) {
       await delay(DELAY_MS);
       
@@ -100,6 +127,7 @@ async function fetchAllOrdersForRegion(regionId) {
  * Main function
  */
 async function main() {
+  const startTime = Date.now();
   console.log('🚀 EVE Items and Regions Sorter');
   console.log('================================');
   console.log('');
@@ -114,66 +142,70 @@ async function main() {
   console.log(`  Loaded ${Object.keys(itemsData).length} items`);
   console.log('');
   
-  // Track order counts
-  const regionOrderCounts = {};
-  const itemOrderCounts = {};
+  // Track page counts per region
+  const regionPageCounts = {};
   
-  // Fetch orders for each region
-  console.log('📊 Fetching orders from ESI API...');
+  // Phase 1: Fetch page counts for each region (one request each)
+  console.log('📊 Phase 1: Fetching page counts for each region...');
   console.log('');
   
   for (let i = 0; i < regionNames.length; i++) {
     const regionName = regionNames[i];
     const regionId = regionsData[regionName];
     
-    console.log(`[${i + 1}/${regionNames.length}] Processing ${regionName} (${regionId})`);
+    console.log(`[${i + 1}/${regionNames.length}] ${regionName} (${regionId})`);
     
-    const orders = await fetchAllOrdersForRegion(regionId);
-    regionOrderCounts[regionName] = orders.length;
+    const pageCount = await fetchPageCount(regionId);
+    regionPageCounts[regionName] = pageCount;
     
-    // Count orders per item (type_id)
-    for (const order of orders) {
-      const typeId = order.type_id;
-      if (!itemOrderCounts[typeId]) {
-        itemOrderCounts[typeId] = 0;
-      }
-      itemOrderCounts[typeId]++;
-    }
-    
-    // Delay between regions to be nice to the API
     if (i < regionNames.length - 1) {
-      await delay(DELAY_MS * 2);
+      await delay(DELAY_MS);
     }
   }
   
+  // Sort regions by page count (descending)
   console.log('');
-  console.log('✅ All orders fetched!');
-  console.log('');
-  
-  // Sort regions by order count (descending)
-  console.log('🔄 Sorting regions by order volume...');
-  const sortedRegions = Object.entries(regionsData)
+  console.log('🔄 Sorting regions by page count...');
+  const sortedRegionEntries = Object.entries(regionsData)
     .sort((a, b) => {
-      const countA = regionOrderCounts[a[0]] || 0;
-      const countB = regionOrderCounts[b[0]] || 0;
+      const countA = regionPageCounts[a[0]] || 0;
+      const countB = regionPageCounts[b[0]] || 0;
       return countB - countA;
-    })
+    });
+  
+  const sortedRegions = sortedRegionEntries
     .reduce((obj, [name, id]) => {
       obj[name] = id;
       return obj;
     }, {});
   
   // Display top 10 regions
-  console.log('  Top 10 regions by order volume:');
-  Object.entries(regionOrderCounts)
-    .sort((a, b) => b[1] - a[1])
+  console.log('  Top 10 regions by page count:');
+  sortedRegionEntries
     .slice(0, 10)
-    .forEach(([name, count], i) => {
-      console.log(`    ${i + 1}. ${name}: ${count.toLocaleString()} orders`);
+    .forEach(([name], i) => {
+      console.log(`    ${i + 1}. ${name}: ${regionPageCounts[name]} pages`);
     });
   console.log('');
   
-  // Sort items by order count (descending)
+  // Phase 2: Fetch all orders from the top region to sort items
+  const topRegionName = sortedRegionEntries[0][0];
+  const topRegionId = sortedRegionEntries[0][1];
+  console.log(`📊 Phase 2: Fetching all orders from top region "${topRegionName}" to sort items...`);
+  
+  const orders = await fetchAllOrdersForRegion(topRegionId);
+  
+  // Count orders per item (type_id)
+  const itemOrderCounts = {};
+  for (const order of orders) {
+    const typeId = order.type_id;
+    if (!itemOrderCounts[typeId]) {
+      itemOrderCounts[typeId] = 0;
+    }
+    itemOrderCounts[typeId]++;
+  }
+  
+  console.log('');
   console.log('🔄 Sorting items by order volume...');
   
   // Create reverse lookup from typeId to name
@@ -212,7 +244,10 @@ async function main() {
   console.log(`  ✅ Saved ${ITEMS_FILE}`);
   
   console.log('');
-  console.log('✅ Done! Files sorted by order volume.');
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  const minutes = Math.floor(elapsed / 60);
+  const seconds = (elapsed % 60).toFixed(1);
+  console.log(`✅ Done! Files sorted by order volume. (${minutes}m ${seconds}s)`);
 }
 
 // Run main function
