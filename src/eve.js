@@ -8,9 +8,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const require = createRequire(import.meta.url);
 const pkg = require('../package.json');
-const JITA_REGION_ID = 10000002; // The Forge (Jita)
 const HISTORY_FILE = path.join(__dirname, '..', 'data', 'eve-history.json');
 const ITEMS_FILE = path.join(__dirname, '..', 'data', 'eve-items.json');
+const REGIONS_FILE = path.join(__dirname, '..', 'data', 'eve-regions.json');
+const ETAGS_FILE = path.join(__dirname, '..', 'data', 'eve-etags.json');
+const API_REQUEST_DELAY = 1000; // Milliseconds between ESI API calls
+const NUMBER_OF_ITEMS_TO_PROCESS = 10000;
 
 // Dynamically construct USER_AGENT from GitHub Actions environment
 const getGitHubEmail = () => {
@@ -50,6 +53,63 @@ function delay(ms) {
 
 // ===== MARKET HISTORY POPULATION FUNCTIONS =====
 // NOTE: Population logic has been moved to main() function
+
+/**
+ * Aggregates market history across all regions into a single dataset per item.
+ * Uses volume-weighted average price, summed volumes, max high, min low.
+ * @param {Object} historyData - Nested object: { regionId: { typeId: [...entries] } }
+ * @returns {Object} Aggregated data: { typeId: [...merged entries] }
+ */
+function aggregateRegionData(historyData) {
+  const byTypeAndDate = {}; // typeId -> date -> aggregation accumulators
+
+  for (const regionId of Object.keys(historyData)) {
+    const regionData = historyData[regionId];
+    for (const typeId of Object.keys(regionData)) {
+      if (!byTypeAndDate[typeId]) {
+        byTypeAndDate[typeId] = {};
+      }
+      for (const entry of regionData[typeId]) {
+        const date = entry.date;
+        if (!byTypeAndDate[typeId][date]) {
+          byTypeAndDate[typeId][date] = {
+            date,
+            totalVolume: 0,
+            weightedAvgSum: 0,
+            highest: -Infinity,
+            lowest: Infinity,
+            orderCount: 0
+          };
+        }
+        const agg = byTypeAndDate[typeId][date];
+        agg.totalVolume += entry.volume;
+        agg.weightedAvgSum += entry.average * entry.volume;
+        agg.highest = Math.max(agg.highest, entry.highest);
+        agg.lowest = Math.min(agg.lowest, entry.lowest);
+        agg.orderCount += entry.order_count;
+      }
+    }
+  }
+
+  // Convert accumulators to flat arrays sorted by date
+  const result = {};
+  for (const typeId of Object.keys(byTypeAndDate)) {
+    const dates = Object.keys(byTypeAndDate[typeId]).sort();
+    result[typeId] = dates.map(date => {
+      const agg = byTypeAndDate[typeId][date];
+      return {
+        date: agg.date,
+        average: agg.totalVolume > 0 ? agg.weightedAvgSum / agg.totalVolume : 0,
+        highest: agg.highest,
+        lowest: agg.lowest,
+        volume: agg.totalVolume,
+        order_count: agg.orderCount
+      };
+    });
+  }
+
+  return result;
+}
 
 // ===== ANALYSIS FUNCTIONS =====
 
@@ -237,15 +297,21 @@ export async function runEVEAutomated(options = {}) {
   logMessage(`Analyzing items from history data`);
   logMessage('');
 
-  // Load history data
-  let historyData = null;
+  // Load history data (nested: regionId -> typeId -> entries)
+  let rawHistoryData = null;
   try {
     const historyContent = await fs.promises.readFile(HISTORY_FILE, 'utf-8');
-    historyData = JSON.parse(historyContent);
-    logMessage(`✅ Loaded history for ${Object.keys(historyData).length} items`);
+    rawHistoryData = JSON.parse(historyContent);
+    const regionCount = Object.keys(rawHistoryData).length;
+    logMessage(`✅ Loaded history across ${regionCount} regions`);
   } catch (error) {
     throw new Error(`Could not load history data: ${error.message}`);
   }
+
+  // Aggregate across regions for analysis
+  logMessage('Aggregating data across all regions...');
+  const historyData = aggregateRegionData(rawHistoryData);
+  logMessage(`✅ Aggregated data for ${Object.keys(historyData).length} unique items`);
 
   // Load item names from eve-items.json
   let itemsData = null;
@@ -542,68 +608,136 @@ async function main() {
     const itemNames = Object.keys(itemsData);
     const totalItems = itemNames.length;
     
-    console.log(`Found ${totalItems} items to fetch`);
+    // Load regions from eve-regions.json
+    const regionsData = JSON.parse(await fs.promises.readFile(REGIONS_FILE, 'utf-8'));
+    const regionNames = Object.keys(regionsData);
+    const totalRegions = regionNames.length;
+    const totalRequests = totalRegions * totalItems;
+    
+    console.log(`Found ${totalItems} items across ${totalRegions} regions (${totalRequests.toLocaleString()} total requests)`);
     console.log('');
     
     // Load existing history if available
+    // Structure: { regionId: { typeId: [...entries] } }
     let historyData = {};
     try {
       const existingData = await fs.promises.readFile(HISTORY_FILE, 'utf-8');
       historyData = JSON.parse(existingData);
-      console.log(`Loaded existing history for ${Object.keys(historyData).length} items`);
+      const existingRegions = Object.keys(historyData).length;
+      console.log(`Loaded existing history for ${existingRegions} regions`);
     } catch (error) {
       console.log('No existing history file found, starting fresh');
     }
     
-    // Fetch history for each item
-    let fetched = 0;
-    let errors = 0;
-    
-    for (let i = 0; i < totalItems; i++) {
-      const itemName = itemNames[i];
-      const typeId = itemsData[itemName];
-      
-      // Progress update every 100 items
-      if ((i + 1) % 100 === 0) {
-        console.log(`Progress: ${i + 1}/${totalItems} (${fetched} fetched, ${errors} errors)`);
-      }
-      
-      // Fetch market history from ESI API
-      const url = `https://esi.evetech.net/latest/markets/${JITA_REGION_ID}/history/?datasource=tranquility&type_id=${typeId}`;
-      
-      try {
-        const response = await fetch(url, {
-          headers: {
-            'Accept': 'application/json',
-            'User-Agent': getUserAgent(),
-            'X-Compatibility-Date': '2025-09-30'
-          }
-        });
-        
-        if (response.ok) {
-          const history = await response.json();
-          historyData[typeId] = history;
-          fetched++;
-        } else if (response.status === 404) {
-          // Item not marketable in this region, skip
-          continue;
-        } else {
-          console.error(`Error fetching ${itemName} (${typeId}): HTTP ${response.status}`);
-          errors++;
-        }
-      } catch (error) {
-        console.error(`Error fetching ${itemName} (${typeId}): ${error.message}`);
-        errors++;
-      }
-      
-      // Small delay to avoid rate limiting
-      await delay(100);
+    // Load cached ETags for conditional requests
+    // Structure: { regionId: { typeId: { etag: "...", lastModified: "..." } } }
+    let etagData = {};
+    try {
+      const existingEtags = await fs.promises.readFile(ETAGS_FILE, 'utf-8');
+      etagData = JSON.parse(existingEtags);
+      console.log('Loaded cached ETags for conditional requests');
+    } catch (error) {
+      console.log('No cached ETags found, all requests will be full fetches');
     }
     
-    // Save the populated history
+    // Fetch history for each region and item
+    let fetched = 0;
+    let skipped = 0;
+    let errors = 0;
+    let requestCount = 0;
+    
+    for (let r = 0; r < totalRegions; r++) {
+      // Stop if we've hit the processing limit
+      if (requestCount >= NUMBER_OF_ITEMS_TO_PROCESS) break;
+      
+      const regionName = regionNames[r];
+      const regionId = regionsData[regionName];
+      
+      console.log(`\n🌍 Region ${r + 1}/${totalRegions}: ${regionName} (${regionId})`);
+      
+      // Initialize region objects if they don't exist
+      if (!historyData[regionId]) {
+        historyData[regionId] = {};
+      }
+      if (!etagData[regionId]) {
+        etagData[regionId] = {};
+      }
+      
+      for (let i = 0; i < totalItems; i++) {
+        // Stop if we've hit the processing limit
+        if (requestCount >= NUMBER_OF_ITEMS_TO_PROCESS) break;
+        
+        const itemName = itemNames[i];
+        const typeId = itemsData[itemName];
+        requestCount++;
+        
+        // Progress update every 500 requests
+        if (requestCount % 500 === 0) {
+          console.log(`  Progress: ${requestCount.toLocaleString()}/${totalRequests.toLocaleString()} (${fetched} fetched, ${skipped} unchanged, ${errors} errors)`);
+        }
+        
+        // Fetch market history from ESI API
+        const url = `https://esi.evetech.net/latest/markets/${regionId}/history/?datasource=tranquility&type_id=${typeId}`;
+        
+        // Build headers with conditional request support
+        const headers = {
+          'Accept': 'application/json',
+          'User-Agent': getUserAgent(),
+          'X-Compatibility-Date': '2025-12-16'
+        };
+        
+        // Add ETag/Last-Modified from previous fetch if available
+        const cached = etagData[regionId]?.[typeId];
+        if (cached?.etag) {
+          headers['If-None-Match'] = cached.etag;
+        }
+        if (cached?.lastModified) {
+          headers['If-Modified-Since'] = cached.lastModified;
+        }
+        
+        try {
+          const response = await fetch(url, { headers });
+          
+          if (response.status === 304) {
+            // Data hasn't changed since last fetch, keep existing data
+            skipped++;
+            continue;
+          } else if (response.ok) {
+            const history = await response.json();
+            historyData[regionId][typeId] = history;
+            fetched++;
+            
+            // Cache the ETag and Last-Modified for next run
+            const etag = response.headers.get('etag');
+            const lastModified = response.headers.get('last-modified');
+            if (etag || lastModified) {
+              etagData[regionId][typeId] = {
+                ...(etag && { etag }),
+                ...(lastModified && { lastModified })
+              };
+            }
+          } else if (response.status === 404) {
+            // Item not marketable in this region, skip
+            continue;
+          } else {
+            console.error(`  Error fetching ${itemName} (${typeId}) in ${regionName}: HTTP ${response.status}`);
+            errors++;
+          }
+        } catch (error) {
+          console.error(`  Error fetching ${itemName} (${typeId}) in ${regionName}: ${error.message}`);
+          errors++;
+        }
+        
+        // Delay between API calls
+        await delay(API_REQUEST_DELAY);
+      }
+    }
+    
+    // Save the populated history and ETags
     await fs.promises.writeFile(HISTORY_FILE, JSON.stringify(historyData, null, 2));
+    await fs.promises.writeFile(ETAGS_FILE, JSON.stringify(etagData, null, 2));
     console.log('');
-    console.log(`✅ Populated history: ${fetched} items fetched, ${errors} errors`);
+    console.log(`✅ Populated history: ${fetched} fetched, ${skipped} unchanged (304), ${errors} errors across ${totalRegions} regions`);
     console.log(`Saved to ${HISTORY_FILE}`);
     console.log('');
     
