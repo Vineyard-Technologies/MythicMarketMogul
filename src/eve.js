@@ -51,6 +51,52 @@ function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+/**
+ * Writes a large two-level nested object to a JSON file using streaming to
+ * avoid exceeding Node.js's maximum string length with JSON.stringify.
+ * Serializes each leaf value (e.g. a single item's history array) individually.
+ * Expected structure: { outerKey: { innerKey: value, ... }, ... }
+ * @param {string} filePath - Path to write the JSON file
+ * @param {Object} data - The two-level nested object to serialize
+ */
+async function writeJsonStreaming(filePath, data) {
+  const writeStream = fs.createWriteStream(filePath, { encoding: 'utf-8' });
+
+  return new Promise((resolve, reject) => {
+    writeStream.on('error', reject);
+    writeStream.on('finish', resolve);
+
+    const outerKeys = Object.keys(data);
+    writeStream.write('{\n');
+
+    for (let i = 0; i < outerKeys.length; i++) {
+      const outerKey = outerKeys[i];
+      const inner = data[outerKey];
+      const innerKeys = Object.keys(inner);
+
+      writeStream.write(`  ${JSON.stringify(outerKey)}: {\n`);
+
+      for (let j = 0; j < innerKeys.length; j++) {
+        const innerKey = innerKeys[j];
+        const value = JSON.stringify(inner[innerKey]);
+        writeStream.write(`    ${JSON.stringify(innerKey)}: ${value}`);
+        if (j < innerKeys.length - 1) {
+          writeStream.write(',');
+        }
+        writeStream.write('\n');
+      }
+
+      writeStream.write('  }');
+      if (i < outerKeys.length - 1) {
+        writeStream.write(',');
+      }
+      writeStream.write('\n');
+    }
+
+    writeStream.end('}\n');
+  });
+}
+
 // ===== MARKET HISTORY POPULATION FUNCTIONS =====
 // NOTE: Population logic has been moved to main() function
 
@@ -1006,9 +1052,9 @@ async function main() {
       }
     }
     
-    // Save the populated history and ETags
-    await fs.promises.writeFile(HISTORY_FILE, JSON.stringify(historyData, null, 2));
-    await fs.promises.writeFile(ETAGS_FILE, JSON.stringify(etagData, null, 2));
+    // Save the populated history and ETags (streaming to avoid max string length)
+    await writeJsonStreaming(HISTORY_FILE, historyData);
+    await writeJsonStreaming(ETAGS_FILE, etagData);
     console.log('');
     console.log(`✅ Populated history: ${fetched} fetched, ${skipped} unchanged (304), ${errors} errors across ${totalRegions} regions`);
     console.log(`Saved to ${HISTORY_FILE}`);
