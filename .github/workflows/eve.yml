@@ -78,7 +78,7 @@ jobs:
     - name: Run EVE Analysis
       env:
         GITHUB_ACTIONS: 'true'
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ github.token }}
         BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
       run: node src/eve.js
         

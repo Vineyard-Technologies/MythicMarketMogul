@@ -670,15 +670,15 @@ function getDefaultOpinion(analysisData) {
   };
 }
 
-// ===== EMAIL REPORT GENERATION =====
+// ===== REPORT GENERATION =====
 
 /**
- * Generates HTML email report from EVE analysis results
+ * Generates HTML report from EVE analysis results
  * @param {Object} eveData - EVE analysis results
  * @param {Object} opinion - AI-generated opinion { introParagraph, detailParagraph }
- * @returns {string} HTML email report
+ * @returns {string} HTML report
  */
-function generateEmailReport(eveData, opinion) {
+function generateReport(eveData, opinion) {
   const currentDate = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
@@ -698,19 +698,20 @@ function generateEmailReport(eveData, opinion) {
     const { highRisk = [], lowRisk = [], metadata = {} } = eveData;
     
     // Helper function to generate items HTML
-    const generateItemsHtml = (items, category) => {
+    const generateItemsHtml = (items) => {
       if (items.length === 0) {
-        return '<p class="no-items">No items found</p>';
+        return `<tr><td><p class="no-items">No items found</p></td></tr>`;
       }
-      return items.map((item) => `
+      return items.map((item, index) => `              <tr>
+                <td style="vertical-align: top;${index < items.length - 1 ? ' padding-bottom: 8px;' : ''}">
             <div class="grid-item">
-              <table>
+              <table cellpadding="0" cellspacing="0">
                 <tr>
-                  <td style="width: 32px; vertical-align: top;">
-                    <img src="https://images.evetech.net/types/${item.id}/icon" alt="${item.name}">
+                  <td style="width: 64px; vertical-align: top;">
+                    <img src="https://images.evetech.net/types/${item.id}/icon" alt="${escapeHtml(item.name)}">
                   </td>
-                  <td class="grid-item-content" style="vertical-align: top;">
-                    <h4><a href="https://evemarketbrowser.com/region/0/type/${item.id}" target="_blank">${item.name}</a></h4>
+                  <td class="grid-item-content">
+                    <h4><a href="https://evemarketbrowser.com/region/0/type/${item.id}" target="_blank">${escapeHtml(item.name)}</a></h4>
                     <div class="item-metrics">
                       <span>Price: ${formatISK(item.currentPrice)}</span>
                       <span>Volume: ${item.volumeCategory}</span>
@@ -720,40 +721,28 @@ function generateEmailReport(eveData, opinion) {
                   </td>
                 </tr>
               </table>
-            </div>`).join('\n');
+            </div>
+                </td>
+              </tr>`).join('\n');
     };
 
     contentHtml = `
       <h2 style="text-align: center; margin-top: 0;">Recommendations</h2>
       
-      <table class="grid-container">
+      <table class="recommendations-table" cellpadding="0" cellspacing="0">
         <tr>
-          <td class="grid-section">
+          <td class="risk-section">
             <h3>High Risk</h3>
-            <table class="grid-items">
-              <tr>
-                <td style="width: 50%; vertical-align: top;">
-${generateItemsHtml(highRisk.slice(0, 2), 'high-risk-col1')}
-                </td>
-                <td style="width: 50%; vertical-align: top;">
-${generateItemsHtml(highRisk.slice(2, 4), 'high-risk-col2')}
-                </td>
-              </tr>
+            <table class="items-table" cellpadding="0" cellspacing="0">
+${generateItemsHtml(highRisk)}
             </table>
           </td>
         </tr>
         <tr>
-          <td class="grid-section">
+          <td class="risk-section">
             <h3>Low Risk</h3>
-            <table class="grid-items">
-              <tr>
-                <td style="width: 50%; vertical-align: top;">
-${generateItemsHtml(lowRisk.slice(0, 2), 'low-risk-col1')}
-                </td>
-                <td style="width: 50%; vertical-align: top;">
-${generateItemsHtml(lowRisk.slice(2, 4), 'low-risk-col2')}
-                </td>
-              </tr>
+            <table class="items-table" cellpadding="0" cellspacing="0">
+${generateItemsHtml(lowRisk)}
             </table>
           </td>
         </tr>
@@ -764,16 +753,13 @@ ${generateItemsHtml(lowRisk.slice(2, 4), 'low-risk-col2')}
   // Read existing index.html and update only the dynamic content
   let template = fs.readFileSync('docs/eve/index.html', 'utf8');
   
-  // Update the date
+  // Update the content section
+  // Match from <div class="content"> to its closing </div>, identified by the
+  // unique suffix pattern </td></tr></table></div> (content-cell, main-table row,
+  // main-table, main-container) that only appears after the content div.
   template = template.replace(
-    /<span id="report-date">.*?<\/span>/,
-    `<span id="report-date">${currentDate}</span>`
-  );
-  
-  // Update the content section (main grid area only, preserve opinion column)
-  template = template.replace(
-    /<div class="content">[\s\S]*?<\/div>\s*<aside class="opinion-column">/,
-    `<div class="content">\n${contentHtml}\n    </div>\n    \n    <aside class="opinion-column">`
+    /<div class="content">[\s\S]*?<\/div>(\s*<\/td>\s*<\/tr>\s*<\/table>\s*<\/div>)/,
+    `<div class="content">\n${contentHtml}\n    </div>$1`
   );
 
   // Update the opinion section
@@ -1097,7 +1083,7 @@ async function main() {
     const opinion = await generateOpinion(results, previousResults);
     
     // Generate and update the index.html file
-    const reportHtml = generateEmailReport(results, opinion);
+    const reportHtml = generateReport(results, opinion);
     fs.writeFileSync('docs/eve/index.html', reportHtml);
     
     console.log('\n✅ Analysis Complete!');
@@ -1133,7 +1119,7 @@ async function main() {
     fs.writeFileSync('eve-results.json', JSON.stringify(errorResult, null, 2));
     
     // Generate error report and update index.html (no opinion for errors)
-    const reportHtml = generateEmailReport(errorResult, null);
+    const reportHtml = generateReport(errorResult, null);
     fs.writeFileSync('docs/eve/index.html', reportHtml);
     
     process.exit(1);
