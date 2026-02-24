@@ -753,28 +753,25 @@ ${generateItemsHtml(lowRisk)}
   // Read existing index.html and update only the dynamic content
   let template = fs.readFileSync('docs/eve/index.html', 'utf8');
   
-  // Update the content section
-  // Match from <div class="content"> to its closing </div>, identified by the
-  // unique suffix pattern </td></tr></table></div> (content-cell, main-table row,
-  // main-table, main-container) that only appears after the content div.
+  // Update the content section using comment markers for reliable matching
   template = template.replace(
-    /<div class="content">[\s\S]*?<\/div>(\s*<\/td>\s*<\/tr>\s*<\/table>\s*<\/div>)/,
-    `<div class="content">\n${contentHtml}\n    </div>$1`
+    /<!-- EVE_CONTENT_START -->[\s\S]*?<!-- EVE_CONTENT_END -->/,
+    `<!-- EVE_CONTENT_START -->\n${contentHtml}\n    <!-- EVE_CONTENT_END -->`
   );
 
   // Update the opinion section
   if (opinion) {
-    // Update the intro paragraph (the one next to the portrait)
+    // Update the intro paragraph using comment markers
     template = template.replace(
-      /(<td class="opinion-text" style="vertical-align: middle;">\s*<p style="margin: 0;">\s*)<em>[^<]*<\/em>[^<]*(<\/p>)/s,
-      `$1<em>${currentDate}</em> — ${escapeHtml(opinion.introParagraph)}$2`
+      /<!-- EVE_OPINION_INTRO_START -->[\s\S]*?<!-- EVE_OPINION_INTRO_END -->/,
+      `<!-- EVE_OPINION_INTRO_START --><em>${currentDate}</em> — ${escapeHtml(opinion.introParagraph)}<!-- EVE_OPINION_INTRO_END -->`
     );
 
-    // Update the detail paragraph
+    // Update the detail paragraph using comment markers
     if (opinion.detailParagraph) {
       template = template.replace(
-        /(<td colspan="2" style="padding-top: 12px;">\s*<p>)[\s\S]*?(<\/p>\s*<\/td>)/,
-        `$1${escapeHtml(opinion.detailParagraph)}$2`
+        /<!-- EVE_OPINION_DETAIL_START -->[\s\S]*?<!-- EVE_OPINION_DETAIL_END -->/,
+        `<!-- EVE_OPINION_DETAIL_START -->${escapeHtml(opinion.detailParagraph)}<!-- EVE_OPINION_DETAIL_END -->`
       );
     }
   }
