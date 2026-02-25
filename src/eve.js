@@ -12,6 +12,7 @@ const HISTORY_FILE = path.join(__dirname, '..', 'data', 'eve-history.json');
 const ITEMS_FILE = path.join(__dirname, '..', 'data', 'eve-items.json');
 const REGIONS_FILE = path.join(__dirname, '..', 'data', 'eve-regions.json');
 const ETAGS_FILE = path.join(__dirname, '..', 'data', 'eve-etags.json');
+const RECOMMENDATIONS_LOG_FILE = path.join(__dirname, '..', 'data', 'eve-recommendations-log.json');
 const API_REQUEST_DELAY = 1000; // Milliseconds between ESI API calls
 const NUMBER_OF_ITEMS_TO_PROCESS = 10000;
 
@@ -561,6 +562,37 @@ async function generateOpinion(analysisData, previousResults = null) {
     }
   }
 
+  // Load recent AI analyses from the recommendations log to avoid repetition
+  let recentAnalysesText = '';
+  try {
+    const logContent = fs.readFileSync(RECOMMENDATIONS_LOG_FILE, 'utf-8');
+    const log = JSON.parse(logContent);
+    const recentEntries = log
+      .filter(entry => entry.aiAnalysis && entry.aiAnalysis.introParagraph)
+      .slice(-3); // Last 3 entries
+    if (recentEntries.length > 0) {
+      recentAnalysesText = '\n\nYOUR RECENT OPINION PIECES (do NOT repeat these — write something fresh and different):';
+      for (const entry of recentEntries) {
+        const entryDate = new Date(entry.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        recentAnalysesText += `\n\n[${entryDate}]:\n${entry.aiAnalysis.introParagraph}\n${entry.aiAnalysis.detailParagraph}`;
+      }
+    }
+  } catch (e) {
+    // No log file yet, that's fine
+  }
+
+  // Vary the writing angle each day
+  const angles = [
+    'Focus on what changed since yesterday and why it matters for traders.',
+    'Lead with the most surprising or unusual data point you see in today\'s picks.',
+    'Frame your analysis around the overall market mood — is it bullish, bearish, or uncertain?',
+    'Pick one standout item and build your commentary around why it\'s the most interesting play today.',
+    'Compare the risk profiles — what does the contrast between high and low risk picks tell us today?',
+    'Think about what a new trader needs to hear versus what a veteran would find useful.',
+    'Open with a bold prediction or hot take based on the momentum and volatility data.',
+  ];
+  const todayAngle = angles[Math.floor(Date.now() / 86400000) % angles.length];
+
   const prompt = `You are Foggle Lopperbottom, a savvy EVE Online market analyst who writes daily trading opinion pieces. You have a casual but knowledgeable tone — you speak like an experienced trader sharing tips with friends. You know EVE Online lore, items, and market mechanics well.
 
 Here are today's recommended items:
@@ -569,19 +601,22 @@ HIGH RISK (volatile, speculative):
 ${highRiskSummary}
 
 LOW RISK (stable, consistent):
-${lowRiskSummary}${marketOverviewText}${moversText}${comparisonText}
+${lowRiskSummary}${marketOverviewText}${moversText}${comparisonText}${recentAnalysesText}
+
+TODAY'S ANGLE: ${todayAngle}
 
 Write a short opinion piece with exactly TWO paragraphs:
 
-1. FIRST PARAGRAPH: A brief commentary (2-3 sentences) on the low-risk picks — what makes them interesting today, why traders should consider them. You can reference market-wide trends or notable movers if relevant. Start directly with your analysis (no date prefix, that's added separately).
+1. FIRST PARAGRAPH: Commentary on the low-risk picks and/or market-wide trends. Start directly with your analysis (no date prefix, that's added separately).
 
-2. SECOND PARAGRAPH: A brief commentary (2-3 sentences) on the high-risk picks — highlight 1-2 specific items by name that look especially promising, reference their price trajectory (7d/30d changes) if noteworthy, and mention if they're new to the list or have been consistently recommended.
+2. SECOND PARAGRAPH: Commentary on the high-risk picks — highlight specific items by name.
 
 Rules:
 - Keep it concise — each paragraph should be 2-3 sentences max
 - Sound natural and conversational, like you're chatting with fellow capsuleers
 - Reference specific item names from the data
 - Use the market overview, notable movers, and changes from yesterday to add color and context where relevant — don't just repeat the numbers
+- IMPORTANT: Vary your sentence structure, opening words, and phrasing. Do NOT start paragraphs the same way as your recent pieces shown above. Use different sentence patterns and fresh angles each day.
 - Do NOT use markdown formatting, just plain text
 - Do NOT include any HTML tags
 - Do NOT start with a date
@@ -1082,6 +1117,60 @@ async function main() {
     // Generate and update the index.html file
     const reportHtml = generateReport(results, opinion);
     fs.writeFileSync('docs/eve/index.html', reportHtml);
+    
+    // Append to recommendations log
+    try {
+      let log = [];
+      try {
+        const existing = fs.readFileSync(RECOMMENDATIONS_LOG_FILE, 'utf-8');
+        log = JSON.parse(existing);
+      } catch (e) {
+        // No existing log file, start fresh
+      }
+      
+      const logEntry = {
+        date: new Date().toISOString(),
+        highRisk: (results.highRisk || []).map(item => ({
+          id: item.id,
+          name: item.name,
+          currentPrice: item.currentPrice,
+          priceChange: item.priceChange,
+          priceChange7d: item.priceChange7d,
+          priceChange30d: item.priceChange30d,
+          volatility: item.volatility,
+          momentum: item.momentum,
+          volume: item.volume,
+          volumeCategory: item.volumeCategory,
+          investmentScore: item.investmentScore,
+          dataPoints: item.dataPoints
+        })),
+        lowRisk: (results.lowRisk || []).map(item => ({
+          id: item.id,
+          name: item.name,
+          currentPrice: item.currentPrice,
+          priceChange: item.priceChange,
+          priceChange7d: item.priceChange7d,
+          priceChange30d: item.priceChange30d,
+          volatility: item.volatility,
+          momentum: item.momentum,
+          volume: item.volume,
+          volumeCategory: item.volumeCategory,
+          investmentScore: item.investmentScore,
+          dataPoints: item.dataPoints
+        })),
+        aiAnalysis: opinion ? {
+          introParagraph: opinion.introParagraph,
+          detailParagraph: opinion.detailParagraph
+        } : null,
+        metadata: results.metadata
+      };
+      
+      log.push(logEntry);
+      fs.writeFileSync(RECOMMENDATIONS_LOG_FILE, JSON.stringify(log, null, 2));
+      console.log(`📝 Appended to recommendations log (${log.length} entries total)`);
+    } catch (logError) {
+      console.error('⚠️ Failed to update recommendations log:', logError.message);
+    }
     
     console.log('\n✅ Analysis Complete!');
     console.log(`Total time: ${results.metadata.analysisTime}`);
