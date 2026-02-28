@@ -156,5 +156,163 @@
       "timestamp": "2026-02-27T07:58:27.931Z",
       "environment": "GitHub Actions"
     }
+  },
+  {
+    "date": "2026-02-28T07:31:51.403Z",
+    "highRisk": [
+      {
+        "id": 18,
+        "name": "Plagioclase",
+        "currentPrice": 49,
+        "priceChange": "-27.78",
+        "priceChange7d": "18.35",
+        "priceChange30d": "36.35",
+        "volatility": "26.19",
+        "momentum": "16.94",
+        "volume": 4334634,
+        "volumeCategory": "Very High",
+        "investmentScore": "100.0",
+        "dataPoints": 422
+      },
+      {
+        "id": 36,
+        "name": "Mexallon",
+        "currentPrice": 75,
+        "priceChange": "-44.43",
+        "priceChange7d": "11.31",
+        "priceChange30d": "6.34",
+        "volatility": "28.12",
+        "momentum": "25.58",
+        "volume": 814843765,
+        "volumeCategory": "Very High",
+        "investmentScore": "100.0",
+        "dataPoints": 422
+      },
+      {
+        "id": 41,
+        "name": "Garbage",
+        "currentPrice": 95,
+        "priceChange": "213.98",
+        "priceChange7d": "0.00",
+        "priceChange30d": "354.23",
+        "volatility": "133.99",
+        "momentum": "-2.93",
+        "volume": 200296,
+        "volumeCategory": "Very High",
+        "investmentScore": "100.0",
+        "dataPoints": 422
+      },
+      {
+        "id": 43,
+        "name": "Antibiotics",
+        "currentPrice": 333,
+        "priceChange": "9.03",
+        "priceChange7d": "119.13",
+        "priceChange30d": "132.76",
+        "volatility": "16.13",
+        "momentum": "9.91",
+        "volume": 92804,
+        "volumeCategory": "Very High",
+        "investmentScore": "100.0",
+        "dataPoints": 422
+      },
+      {
+        "id": 182,
+        "name": "Titanium Sabot S",
+        "currentPrice": 21,
+        "priceChange": "89.41",
+        "priceChange7d": "54.32",
+        "priceChange30d": "3.91",
+        "volatility": "89.86",
+        "momentum": "12.75",
+        "volume": 144610,
+        "volumeCategory": "Very High",
+        "investmentScore": "100.0",
+        "dataPoints": 422
+      }
+    ],
+    "lowRisk": [
+      {
+        "id": 589,
+        "name": "Executioner",
+        "currentPrice": 588665,
+        "priceChange": "64.13",
+        "priceChange7d": "7.73",
+        "priceChange30d": "16.34",
+        "volatility": "14.77",
+        "momentum": "26.94",
+        "volume": 79,
+        "volumeCategory": "Low",
+        "investmentScore": "100.0",
+        "dataPoints": 422
+      },
+      {
+        "id": 967,
+        "name": "Caldari Shuttle Blueprint",
+        "currentPrice": 54686,
+        "priceChange": "29.68",
+        "priceChange7d": "8.14",
+        "priceChange30d": "8.85",
+        "volatility": "14.95",
+        "momentum": "1.83",
+        "volume": 32,
+        "volumeCategory": "Low",
+        "investmentScore": "100.0",
+        "dataPoints": 422
+      },
+      {
+        "id": 2327,
+        "name": "Microfiber Shielding",
+        "currentPrice": 16500,
+        "priceChange": "22.04",
+        "priceChange7d": "8.84",
+        "priceChange30d": "16.94",
+        "volatility": "11.27",
+        "momentum": "8.06",
+        "volume": 89094,
+        "volumeCategory": "Very High",
+        "investmentScore": "100.0",
+        "dataPoints": 422
+      },
+      {
+        "id": 2390,
+        "name": "Electrolytes",
+        "currentPrice": 610,
+        "priceChange": "-5.46",
+        "priceChange7d": "4.52",
+        "priceChange30d": "-5.10",
+        "volatility": "13.60",
+        "momentum": "10.65",
+        "volume": 2831666,
+        "volumeCategory": "Very High",
+        "investmentScore": "100.0",
+        "dataPoints": 422
+      },
+      {
+        "id": 2397,
+        "name": "Industrial Fibers",
+        "currentPrice": 829,
+        "priceChange": "-6.79",
+        "priceChange7d": "3.56",
+        "priceChange30d": "-4.33",
+        "volatility": "14.41",
+        "momentum": "15.73",
+        "volume": 1556387,
+        "volumeCategory": "Very High",
+        "investmentScore": "100.0",
+        "dataPoints": 422
+      }
+    ],
+    "aiAnalysis": {
+      "introParagraph": "The low-risk segment continues to show steady performance with items like Executioner, Caldari Shuttle Blueprint, Microfiber Shielding. Their consistent volume and low volatility make them solid choices for traders looking to preserve capital.",
+      "detailParagraph": "On the high-risk side, keep an eye on Plagioclase at 49 ISK with +16.94% momentum. Volatile picks like these can pay off big if you time your trades right."
+    },
+    "metadata": {
+      "itemsAnalyzed": 9976,
+      "itemsFetched": 9977,
+      "analysisTime": "193m 51s",
+      "timestamp": "2026-02-28T07:31:51.095Z",
+      "environment": "GitHub Actions"
+    }
   }
 ]
