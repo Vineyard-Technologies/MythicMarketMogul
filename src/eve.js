@@ -591,9 +591,54 @@ async function generateOpinion(analysisData, previousResults = null) {
     'Think about what a new trader needs to hear versus what a veteran would find useful.',
     'Open with a bold prediction or hot take based on the momentum and volatility data.',
   ];
-  const todayAngle = angles[Math.floor(Date.now() / 86400000) % angles.length];
+  const dayIndex = Math.floor(Date.now() / 86400000);
+  const todayAngle = angles[dayIndex % angles.length];
+
+  // Build a list of banned opening words from recent analyses to force variety
+  let bannedOpenings = '';
+  if (recentAnalysesText) {
+    try {
+      const logContent = fs.readFileSync(RECOMMENDATIONS_LOG_FILE, 'utf-8');
+      const log = JSON.parse(logContent);
+      const recentWords = log
+        .filter(e => e.aiAnalysis?.introParagraph)
+        .slice(-5)
+        .flatMap(e => [
+          e.aiAnalysis.introParagraph.split(/\s+/)[0],
+          e.aiAnalysis.detailParagraph?.split(/\s+/)[0]
+        ].filter(Boolean));
+      if (recentWords.length > 0) {
+        bannedOpenings = `\n- BANNED OPENING WORDS (you used these recently, pick something else): ${[...new Set(recentWords)].join(', ')}`;
+      }
+    } catch (_) { /* ignore */ }
+  }
+
+  // Pick a random persona variation
+  const personas = [
+    'Today you\'re feeling cautiously optimistic — you see opportunity but want traders to stay grounded.',
+    'Today you\'re in a skeptical mood — you\'re questioning whether the numbers tell the full story.',
+    'Today you\'re excited — something in the data caught your eye and you can\'t wait to share it.',
+    'Today you\'re reflective — comparing today to recent trends and thinking about the bigger picture.',
+    'Today you\'re giving tough-love advice — being blunt about what looks good and what doesn\'t.',
+    'Today you\'re feeling playful — cracking a joke or two while still delivering solid market insight.',
+    'Today you\'re in teacher mode — explaining why the numbers matter, not just what they are.',
+  ];
+  const todayPersona = personas[(dayIndex + 2) % personas.length];
+
+  // Pick a random structural format
+  const formats = [
+    'Start your first paragraph with a question. Start your second paragraph with a bold claim.',
+    'Start your first paragraph by naming the single most interesting low-risk item. Start your second paragraph with a warning.',
+    'Start your first paragraph with a metaphor or analogy. Start your second paragraph with "Meanwhile" or a transition word.',
+    'Start your first paragraph with a short punchy sentence (under 8 words). Then expand. Start your second paragraph by addressing the reader directly.',
+    'Start your first paragraph by comparing two low-risk items. Start your second paragraph with the most dramatic number from the high-risk data.',
+    'Start your first paragraph with an observation about overall market sentiment. Start your second paragraph by singling out the wildest high-risk pick.',
+  ];
+  const todayFormat = formats[(dayIndex + 5) % formats.length];
 
   const prompt = `You are Foggle Lopperbottom, a savvy EVE Online market analyst who writes daily trading opinion pieces. You have a casual but knowledgeable tone — you speak like an experienced trader sharing tips with friends. You know EVE Online lore, items, and market mechanics well.
+
+${todayPersona}
 
 Here are today's recommended items:
 
@@ -603,7 +648,8 @@ ${highRiskSummary}
 LOW RISK (stable, consistent):
 ${lowRiskSummary}${marketOverviewText}${moversText}${comparisonText}${recentAnalysesText}
 
-TODAY'S ANGLE: ${todayAngle}
+TODAY'S WRITING ANGLE: ${todayAngle}
+TODAY'S STRUCTURE: ${todayFormat}
 
 Write a short opinion piece with exactly TWO paragraphs:
 
@@ -614,9 +660,11 @@ Write a short opinion piece with exactly TWO paragraphs:
 Rules:
 - Keep it concise — each paragraph should be 2-3 sentences max
 - Sound natural and conversational, like you're chatting with fellow capsuleers
-- Reference specific item names from the data
-- Use the market overview, notable movers, and changes from yesterday to add color and context where relevant — don't just repeat the numbers
-- IMPORTANT: Vary your sentence structure, opening words, and phrasing. Do NOT start paragraphs the same way as your recent pieces shown above. Use different sentence patterns and fresh angles each day.
+- Reference specific item names from the data — use at least 2 different item names per paragraph
+- Use the market overview, notable movers, and changes from yesterday to add color and context where relevant — don't just repeat the numbers, interpret them
+- CRITICAL: Your response must be COMPLETELY DIFFERENT from your recent pieces shown above. Do NOT reuse phrases, sentence structures, or paragraph openings. Every sentence must be freshly written.${bannedOpenings}
+- Vary sentence LENGTH — mix short punchy statements with longer explanatory ones
+- Include at least one specific insight that goes beyond restating numbers (e.g., what a trend implies, a risk to watch for, or a trading strategy hint)
 - Do NOT use markdown formatting, just plain text
 - Do NOT include any HTML tags
 - Do NOT start with a date
@@ -635,8 +683,8 @@ Rules:
         messages: [
           { role: 'user', content: prompt }
         ],
-        max_tokens: 400,
-        temperature: 0.8
+        max_tokens: 500,
+        temperature: 1.0
       })
     });
 
@@ -685,24 +733,142 @@ Rules:
 }
 
 /**
- * Returns a default opinion when AI generation is unavailable
+ * Returns a default opinion when AI generation is unavailable.
+ * Uses a large pool of templates, tones, and structures that rotate
+ * based on the current date so every day reads differently.
  * @param {Object} analysisData - The analysis results
  * @returns {Object} Object with { introParagraph, detailParagraph }
  */
 function getDefaultOpinion(analysisData) {
-  const { highRisk = [], lowRisk = [] } = analysisData;
+  const { highRisk = [], lowRisk = [], marketOverview = {}, notableMovers = {} } = analysisData;
 
-  const lowRiskNames = lowRisk.slice(0, 3).map(i => i.name).join(', ');
-  const topHighRisk = highRisk[0];
+  // --- helper selectors driven by day-of-year so we rotate deterministically ---
+  const dayIndex = Math.floor(Date.now() / 86400000); // days since epoch
+  const pick = (arr) => arr[dayIndex % arr.length];
+  const pick2 = (arr) => arr[(dayIndex + 3) % arr.length]; // offset so two picks from same pool differ
 
-  return {
-    introParagraph: lowRisk.length > 0
-      ? `The low-risk segment continues to show steady performance with items like ${lowRiskNames}. Their consistent volume and low volatility make them solid choices for traders looking to preserve capital.`
-      : 'The low-risk segment is quiet today — check back tomorrow for new opportunities.',
-    detailParagraph: topHighRisk
-      ? `On the high-risk side, keep an eye on ${topHighRisk.name} at ${formatISK(topHighRisk.currentPrice)} with ${topHighRisk.momentum > 0 ? '+' : ''}${topHighRisk.momentum}% momentum. Volatile picks like these can pay off big if you time your trades right.`
-      : 'No standout high-risk picks today — sometimes the best trade is no trade at all.'
-  };
+  // --- extract useful data points ---
+  const lowNames = lowRisk.slice(0, 3).map(i => i.name);
+  const lowNamesStr = lowNames.join(', ');
+  const topLow = lowRisk[0];
+  const topHigh = highRisk[0];
+  const secondHigh = highRisk[1];
+  const lowestVol = lowRisk.length > 0
+    ? lowRisk.reduce((a, b) => parseFloat(a.volatility) < parseFloat(b.volatility) ? a : b)
+    : null;
+  const highestMomentum = highRisk.length > 0
+    ? highRisk.reduce((a, b) => parseFloat(a.momentum) > parseFloat(b.momentum) ? a : b)
+    : null;
+  const biggestSwing = highRisk.length > 0
+    ? highRisk.reduce((a, b) => Math.abs(parseFloat(a.priceChange7d)) > Math.abs(parseFloat(b.priceChange7d)) ? a : b)
+    : null;
+
+  const fmt = (item) => formatISK(item.currentPrice);
+  const sign = (v) => (parseFloat(v) > 0 ? '+' : '') + v;
+
+  // Determine broad market sentiment from available data
+  let sentiment = 'mixed';
+  if (marketOverview.itemsUp > marketOverview.itemsDown * 1.3) sentiment = 'bullish';
+  else if (marketOverview.itemsDown > marketOverview.itemsUp * 1.3) sentiment = 'bearish';
+
+  // --- LOW-RISK paragraph templates ---
+  const introTemplates = [
+    // template 0 - spotlight lowest volatility
+    () => lowestVol
+      ? `${lowestVol.name} is the calmest waters in today's lineup at just ${lowestVol.volatility}% volatility — exactly the kind of stability ISK-preserving traders want. ${lowNames.length > 1 ? `${lowNames.filter(n => n !== lowestVol.name).join(' and ')} round out a solid low-risk shelf.` : ''}`
+      : `Today's low-risk picks look dependable. If you're parking ISK somewhere safe, ${lowNamesStr} should let you sleep easy.`,
+    // template 1 - volume focus
+    () => {
+      const highVolItems = lowRisk.filter(i => i.volumeCategory === 'Very High');
+      return highVolItems.length > 0
+        ? `Liquidity lovers, take note: ${highVolItems.slice(0, 2).map(i => i.name).join(' and ')} ${highVolItems.length > 1 ? 'are both' : 'is'} moving at Very High volume, so getting in and out should be painless. Low volatility across the board makes the stable shelf a comfortable hold today.`
+        : `The stable picks today — ${lowNamesStr} — are keeping things predictable. Volume is moderate, so set your orders and be patient.`;
+    },
+    // template 2 - momentum snapshot
+    () => topLow
+      ? `Steady as she goes: ${topLow.name} at ${fmt(topLow)} is carrying ${sign(topLow.momentum)}% momentum with only ${topLow.volatility}% volatility. That's the kind of ratio conservative traders love to see. ${lowNames.length > 2 ? `${lowNames[1]} and ${lowNames[2]} are in a similar groove.` : ''}`
+      : `Not a lot of fireworks on the low-risk side today, but that's the whole point. Capital preservation is the name of the game.`,
+    // template 3 - comparison angle
+    () => lowRisk.length >= 2
+      ? `Comparing today's safe plays, ${lowRisk[0].name} (${sign(lowRisk[0].priceChange30d)}% over 30d) and ${lowRisk[1].name} (${sign(lowRisk[1].priceChange30d)}%) tell slightly different stories. One's been climbing, the other dipping — but both stay within that comfortable low-volatility band where surprises are rare.`
+      : `${lowNamesStr} ${lowRisk.length === 1 ? 'stands' : 'stand'} out as today's reliable pick${lowRisk.length === 1 ? '' : 's'} for traders who prefer low drama.`,
+    // template 4 - market mood
+    () => {
+      if (sentiment === 'bullish') return `The broader market's leaning green today, and the low-risk shelf is riding that wave. ${lowNamesStr} look like solid places to park ISK while the tide is up.`;
+      if (sentiment === 'bearish') return `With the overall market pulling back, the stability of ${lowNamesStr} is worth its weight in Tritanium right now. Low volatility is a feature, not a bug, on days like this.`;
+      return `Markets are sending mixed signals today, which makes the dependability of picks like ${lowNamesStr} that much more appealing. Sometimes boring is beautiful.`;
+    },
+    // template 5 - direct advice tone
+    () => topLow
+      ? `If I'm putting ISK to work today with minimal risk, ${topLow.name} at ${fmt(topLow)} is where I'd start — ${topLow.volatility}% volatility and ${topLow.volumeCategory.toLowerCase()} volume make for an easy entry. ${lowNames.length > 1 ? `${lowNames.slice(1).join(' and ')} ${lowNames.length > 2 ? 'are' : 'is'} on the shortlist too.` : ''}`
+      : `The safe side of the board is thin today. Sometimes the best move is to sit tight and wait for cleaner setups.`,
+    // template 6 - narrative / story
+    () => lowRisk.length >= 2
+      ? `There's a quiet reliability to ${lowRisk[0].name} and ${lowRisk[1].name} that seasoned traders appreciate. Neither will make you rich overnight, but they won't blow up your portfolio either — and in New Eden, that counts for a lot.`
+      : `Today's conservative play is straightforward: ${lowNamesStr}. Nothing flashy, just consistent.`,
+    // template 7 - data-driven
+    () => {
+      const avgVol = lowRisk.length > 0
+        ? (lowRisk.reduce((s, i) => s + parseFloat(i.volatility), 0) / lowRisk.length).toFixed(1)
+        : '0';
+      return `Across the low-risk picks, average volatility sits at ${avgVol}% — that's textbook stable. ${lowNamesStr} make up a well-diversified safe basket for today's session.`;
+    },
+  ];
+
+  // --- HIGH-RISK paragraph templates ---
+  const detailTemplates = [
+    // template 0 - spotlight top pick
+    () => topHigh
+      ? `${topHigh.name} at ${fmt(topHigh)} is the headliner — ${sign(topHigh.momentum)}% momentum and ${topHigh.volatility}% volatility mean big swings in either direction. ${secondHigh ? `${secondHigh.name} is another wild card worth watching.` : ''} These aren't buy-and-hold plays; timing is everything.`
+      : `No standout high-risk picks today — sometimes the best trade is no trade at all.`,
+    // template 1 - biggest swing
+    () => biggestSwing
+      ? `The biggest mover this week is ${biggestSwing.name} at ${sign(biggestSwing.priceChange7d)}% over seven days — that's the kind of action adrenaline traders live for. At ${fmt(biggestSwing)} a pop, the entry is ${parseFloat(biggestSwing.currentPrice) < 100 ? 'dirt cheap, making it easy to gamble with small stacks' : 'significant, so size your position carefully'}.`
+      : `High-risk picks are quiet today. Keep your powder dry.`,
+    // template 2 - momentum leader
+    () => highestMomentum
+      ? `Momentum chasers, your eyes should be on ${highestMomentum.name} — ${sign(highestMomentum.momentum)}% and climbing. Pair that with ${highestMomentum.volatility}% volatility and you've got a recipe for either a quick win or a hard lesson. ${highRisk.length > 2 ? `The rest of the speculative shelf (${highRisk.slice(1, 3).map(i => i.name).join(', ')}) is equally spicy.` : ''}`
+      : `Nothing on the high-risk side is screaming momentum right now. Patience pays.`,
+    // template 3 - risk warning tone
+    () => topHigh
+      ? `Fair warning: the speculative picks today are not for the faint of heart. ${topHigh.name} is sitting at ${topHigh.volatility}% volatility, and ${secondHigh ? `${secondHigh.name} isn't much calmer at ${secondHigh.volatility}%` : 'the rest of the lineup is similarly wild'}. If you're going in, set your stop-losses and stick to them.`
+      : `The high-risk board is empty today — the market isn't offering any clear speculative plays worth chasing.`,
+    // template 4 - cheap vs expensive
+    () => {
+      const cheap = highRisk.filter(i => i.currentPrice < 50);
+      const pricey = highRisk.filter(i => i.currentPrice >= 50);
+      if (cheap.length > 0 && pricey.length > 0) {
+        return `Today's speculative shelf has something for every budget: ${cheap.map(i => i.name).join(', ')} ${cheap.length > 1 ? 'are' : 'is'} cheap enough to throw pocket change at, while ${pricey[0].name} at ${fmt(pricey[0])} demands more commitment. All of them are volatile — that's the price of admission.`;
+      }
+      return topHigh
+        ? `On the wild side, ${topHigh.name} leads the speculative picks at ${fmt(topHigh)}. With ${topHigh.volatility}% volatility, it's a coin flip that could land in your favor if the momentum holds.`
+        : `No standout high-risk picks today. The market needs a catalyst.`;
+    },
+    // template 5 - day-over-day change focus
+    () => topHigh
+      ? `${topHigh.name} just moved ${sign(topHigh.priceChange)}% since yesterday — that tells you everything about the kind of day the speculative side is having. ${highRisk.length > 1 ? `Meanwhile, ${highRisk[highRisk.length - 1].name} is simmering at ${sign(highRisk[highRisk.length - 1].priceChange)}%, waiting to boil over.` : ''} High risk, high reward — the mantra never changes.`
+      : `Nothing's popping on the high-risk radar today. Check back tomorrow.`,
+    // template 6 - lore-flavored
+    () => topHigh
+      ? `Every capsuleer knows the rush of a good gamble, and today ${topHigh.name} at ${fmt(topHigh)} is calling from the speculative fringe. ${topHigh.volatility}% volatility is not for the risk-averse. ${secondHigh ? `If that's too tame, ${secondHigh.name} is even wilder at ${secondHigh.volatility}% vol.` : ''}`
+      : `The speculative market is frozen today — no trades worth the jump fuel.`,
+    // template 7 - contrarian / value dip
+    () => {
+      const dips = highRisk.filter(i => parseFloat(i.priceChange30d) < -10);
+      if (dips.length > 0) {
+        return `Contrarian alert: ${dips.map(i => i.name).join(' and ')} ${dips.length > 1 ? 'have' : 'has'} dropped over 10% in 30 days. If you believe in a bounce, this is your entry — but volatility says the floor could still drop. Speculate responsibly.`;
+      }
+      return topHigh
+        ? `The high-risk picks are running hot — ${topHigh.name} with ${sign(topHigh.priceChange30d)}% over 30 days shows the trend is strong. The question is whether you're catching the wave or the tail end of it.`
+        : `The speculative board is quiet — sometimes patience is the best position.`;
+    },
+  ];
+
+  // --- Select templates (different indices so intro and detail don't always pair the same way) ---
+  const introParagraph = (lowRisk.length > 0 ? pick(introTemplates) : () => 'The low-risk segment is quiet today — check back tomorrow for new opportunities.')();
+  const detailParagraph = (highRisk.length > 0 ? pick2(detailTemplates) : () => 'No standout high-risk picks today — sometimes the best trade is no trade at all.')();
+
+  return { introParagraph, detailParagraph };
 }
 
 // ===== REPORT GENERATION =====
