@@ -630,5 +630,163 @@
       "timestamp": "2026-03-02T08:00:36.625Z",
       "environment": "GitHub Actions"
     }
+  },
+  {
+    "date": "2026-03-03T07:51:58.094Z",
+    "highRisk": [
+      {
+        "id": 18,
+        "name": "Plagioclase",
+        "currentPrice": 49,
+        "priceChange": "-26.38",
+        "priceChange7d": "17.18",
+        "priceChange30d": "35.81",
+        "volatility": "22.36",
+        "momentum": "17.45",
+        "volume": 4283480,
+        "volumeCategory": "Very High",
+        "investmentScore": "100.0",
+        "dataPoints": 394
+      },
+      {
+        "id": 36,
+        "name": "Mexallon",
+        "currentPrice": 75,
+        "priceChange": "-41.11",
+        "priceChange7d": "5.35",
+        "priceChange30d": "7.07",
+        "volatility": "21.57",
+        "momentum": "21.77",
+        "volume": 775458350,
+        "volumeCategory": "Very High",
+        "investmentScore": "100.0",
+        "dataPoints": 394
+      },
+      {
+        "id": 43,
+        "name": "Antibiotics",
+        "currentPrice": 307,
+        "priceChange": "2.33",
+        "priceChange7d": "0.51",
+        "priceChange30d": "-18.22",
+        "volatility": "16.66",
+        "momentum": "10.50",
+        "volume": 48861,
+        "volumeCategory": "Very High",
+        "investmentScore": "100.0",
+        "dataPoints": 394
+      },
+      {
+        "id": 182,
+        "name": "Titanium Sabot S",
+        "currentPrice": 12,
+        "priceChange": "49.25",
+        "priceChange7d": "-14.35",
+        "priceChange30d": "-39.39",
+        "volatility": "90.87",
+        "momentum": "14.01",
+        "volume": 145447,
+        "volumeCategory": "Very High",
+        "investmentScore": "100.0",
+        "dataPoints": 394
+      },
+      {
+        "id": 186,
+        "name": "Carbonized Lead M",
+        "currentPrice": 6,
+        "priceChange": "-81.06",
+        "priceChange7d": "-1.38",
+        "priceChange30d": "-8.29",
+        "volatility": "52.09",
+        "momentum": "13.79",
+        "volume": 642245,
+        "volumeCategory": "Very High",
+        "investmentScore": "100.0",
+        "dataPoints": 394
+      }
+    ],
+    "lowRisk": [
+      {
+        "id": 589,
+        "name": "Executioner",
+        "currentPrice": 620273,
+        "priceChange": "22.96",
+        "priceChange7d": "15.93",
+        "priceChange30d": "12.45",
+        "volatility": "14.33",
+        "momentum": "22.66",
+        "volume": 45,
+        "volumeCategory": "Low",
+        "investmentScore": "100.0",
+        "dataPoints": 394
+      },
+      {
+        "id": 2321,
+        "name": "Polyaramids",
+        "currentPrice": 16960,
+        "priceChange": "16.72",
+        "priceChange7d": "-1.11",
+        "priceChange30d": "9.42",
+        "volatility": "9.03",
+        "momentum": "13.15",
+        "volume": 107104,
+        "volumeCategory": "Very High",
+        "investmentScore": "100.0",
+        "dataPoints": 393
+      },
+      {
+        "id": 2397,
+        "name": "Industrial Fibers",
+        "currentPrice": 791,
+        "priceChange": "4.97",
+        "priceChange7d": "0.97",
+        "priceChange30d": "-10.15",
+        "volatility": "12.98",
+        "momentum": "10.48",
+        "volume": 4325719,
+        "volumeCategory": "Very High",
+        "investmentScore": "100.0",
+        "dataPoints": 394
+      },
+      {
+        "id": 2401,
+        "name": "Chiral Structures",
+        "currentPrice": 667,
+        "priceChange": "-26.46",
+        "priceChange7d": "-2.00",
+        "priceChange30d": "-12.26",
+        "volatility": "13.62",
+        "momentum": "10.76",
+        "volume": 4645112,
+        "volumeCategory": "Very High",
+        "investmentScore": "100.0",
+        "dataPoints": 394
+      },
+      {
+        "id": 3116,
+        "name": "Eifyr and Co. 'Rogue' High Speed Maneuvering HS-906",
+        "currentPrice": 669000000,
+        "priceChange": "11.29",
+        "priceChange7d": "60.04",
+        "priceChange30d": "2.92",
+        "volatility": "14.47",
+        "momentum": "8.06",
+        "volume": 1,
+        "volumeCategory": "Very Low",
+        "investmentScore": "100.0",
+        "dataPoints": 157
+      }
+    ],
+    "aiAnalysis": {
+      "introParagraph": "Comparing today's safe plays, Executioner (+12.45% over 30d) and Polyaramids (+9.42%) tell slightly different stories. One's been climbing, the other dipping — but both stay within that comfortable low-volatility band where surprises are rare.",
+      "detailParagraph": "Every capsuleer knows the rush of a good gamble, and today Plagioclase at 49 ISK is calling from the speculative fringe. 22.36% volatility is not for the risk-averse. If that's too tame, Mexallon is even wilder at 21.57% vol."
+    },
+    "metadata": {
+      "itemsAnalyzed": 9976,
+      "itemsFetched": 9977,
+      "analysisTime": "181m 57s",
+      "timestamp": "2026-03-03T07:51:57.934Z",
+      "environment": "GitHub Actions"
+    }
   }
 ]
