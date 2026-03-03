@@ -10,11 +10,93 @@ const __dirname = path.dirname(__filename);
 
 // Load package.json for app name and version
 const require = createRequire(import.meta.url);
-const pkg = require('../package.json');
+const pkg = require('../package.json') as { name: string; version: string };
+
+// ===== TYPE DEFINITIONS =====
+
+interface OsrsPricePoint {
+  timestamp: number;
+  price: number;
+}
+
+interface OsrsPriceData {
+  daily: Record<string, number>;
+  volume: Record<string, number>;
+}
+
+interface OsrsHistoricalItem {
+  name: string;
+  daily: Record<string, number>;
+  volume: Record<string, number>;
+}
+
+interface OsrsHistoricalData {
+  [itemId: string]: OsrsHistoricalItem;
+}
+
+interface OsrsItemInfo {
+  id: number;
+  name: string;
+  members: boolean;
+  volume: number;
+}
+
+interface OsrsItemDumpEntry {
+  id?: number;
+  name?: string;
+  members?: boolean;
+  price?: number;
+  volume?: number;
+  [key: string]: unknown;
+}
+
+interface OsrsItemDatabase {
+  [id: string]: OsrsItemDumpEntry;
+}
+
+interface OsrsAnalysisResult {
+  id: number;
+  name: string;
+  currentPrice: number;
+  startPrice: number;
+  priceChange: string;
+  volume: number;
+  volumeCategory: string;
+  volatility: string;
+  momentum: string;
+  investmentScore: string;
+  dataPoints: number;
+  members: boolean;
+  riskLevel: 'high' | 'low';
+}
+
+interface OsrsAutomatedResults {
+  highRiskMembers: OsrsAnalysisResult[];
+  lowRiskMembers: OsrsAnalysisResult[];
+  highRiskF2P: OsrsAnalysisResult[];
+  lowRiskF2P: OsrsAnalysisResult[];
+  totalAnalyzed: number;
+  totalChecked: number;
+  metadata?: OsrsResultMetadata;
+  error?: string;
+}
+
+interface OsrsResultMetadata {
+  itemsAnalyzed: number;
+  analysisTime: string;
+  timestamp: string;
+  environment: string;
+  failed?: boolean;
+}
+
+interface RunOptions {
+  isGitHubActions?: boolean;
+  logFile?: string | null;
+}
 
 // OSRS constants
 // Dynamically construct USER_AGENT from GitHub Actions environment
-const getGitHubEmail = () => {
+const getGitHubEmail = (): string => {
   const actor = process.env.GITHUB_ACTOR;
   if (!actor) {
     throw new Error('GITHUB_ACTOR environment variable not set');
@@ -22,7 +104,7 @@ const getGitHubEmail = () => {
   return `${actor}@users.noreply.github.com`;
 };
 
-const getRepoUrl = () => {
+const getRepoUrl = (): string => {
   const serverUrl = process.env.GITHUB_SERVER_URL;
   const repository = process.env.GITHUB_REPOSITORY;
   if (!serverUrl || !repository) {
@@ -40,9 +122,8 @@ const HISTORY_FILE = path.join(__dirname, '..', 'data', 'osrs-history.json');
 
 /**
  * Loads historical data from local file
- * @returns {Object} Historical data by item ID
  */
-function loadHistoricalData() {
+function loadHistoricalData(): OsrsHistoricalData {
   if (!fs.existsSync(HISTORY_FILE)) {
     console.log('📝 Creating new history file...');
     fs.writeFileSync(HISTORY_FILE, JSON.stringify({}));
@@ -53,21 +134,15 @@ function loadHistoricalData() {
 
 /**
  * Saves updated historical data (minified for space efficiency)
- * @param {Object} data - Historical data to save
  */
-function saveHistoricalData(data) {
+function saveHistoricalData(data: OsrsHistoricalData): void {
   fs.writeFileSync(HISTORY_FILE, JSON.stringify(data));
 }
 
 /**
  * Updates local history with today's data from Weirdgloop API
- * @param {number} itemId - The OSRS item ID
- * @param {string} itemName - The item name
- * @param {number} currentPrice - Today's price from Weirdgloop
- * @param {number} volume - Today's volume from Weirdgloop
- * @returns {Object} Full price and volume history for the item
  */
-function updateLocalHistory(itemId, itemName, currentPrice, volume) {
+function updateLocalHistory(itemId: number, itemName: string, currentPrice: number, volume: number): OsrsPriceData {
   const historicalData = loadHistoricalData();
   
   // Initialize item if it doesn't exist
@@ -105,23 +180,15 @@ function updateLocalHistory(itemId, itemName, currentPrice, volume) {
 /**
  * Gets price history for an item from local storage
  * Updates with today's data from the item database
- * @param {number} itemId - The OSRS item ID
- * @param {string} itemName - The item name
- * @param {number} currentPrice - Today's price
- * @param {number} volume - Today's volume
- * @returns {Object} Price data with timestamps and values
  */
-function getPriceHistory(itemId, itemName, currentPrice, volume) {
-  // Update local history with today's data
+function getPriceHistory(itemId: number, itemName: string, currentPrice: number, volume: number): OsrsPriceData {
   return updateLocalHistory(itemId, itemName, currentPrice, volume);
 }
 
 /**
  * Fetches item data from the OSRS item database
- * @returns {Promise<Object>} Item data
  */
-async function fetchItemDatabase() {
-  // We have to use this database because the official API does not provide volume data
+async function fetchItemDatabase(): Promise<OsrsItemDatabase> {
   const url = 'https://chisel.weirdgloop.org/gazproj/gazbot/os_dump.json';
   console.log('Fetching item database...');
   
@@ -135,11 +202,11 @@ async function fetchItemDatabase() {
     if (!response.ok) {
       throw new Error(`Failed to fetch item database: ${response.status}`);
     }
-    const data = await response.json();
+    const data: OsrsItemDatabase = await response.json();
     console.log('✅ Item database loaded\n');
     return data;
   } catch (error) {
-    console.error('Error fetching item database:', error.message);
+    console.error('Error fetching item database:', (error as Error).message);
     process.exit(1);
   }
 }
@@ -148,10 +215,8 @@ async function fetchItemDatabase() {
 
 /**
  * Converts price history object to sorted array of price points
- * @param {Object} priceData - Raw price data from API (timestamp: price)
- * @returns {Array} Sorted array of {timestamp, price} objects
  */
-function convertToArray(priceData) {
+function convertToArray(priceData: Record<string, number>): OsrsPricePoint[] {
   return Object.entries(priceData)
     .map(([timestamp, price]) => ({
       timestamp: parseInt(timestamp),
@@ -162,10 +227,8 @@ function convertToArray(priceData) {
 
 /**
  * Calculates the percentage change in price over the period
- * @param {Array} prices - Array of price points
- * @returns {number} Percentage change
  */
-function calculatePriceChange(prices) {
+function calculatePriceChange(prices: OsrsPricePoint[]): number {
   if (prices.length < 2) return 0;
   
   const firstPrice = prices[0].price;
@@ -176,10 +239,8 @@ function calculatePriceChange(prices) {
 
 /**
  * Calculates price volatility (standard deviation)
- * @param {Array} prices - Array of price points
- * @returns {number} Volatility as percentage of mean
  */
-function calculateVolatility(prices) {
+function calculateVolatility(prices: OsrsPricePoint[]): number {
   if (prices.length < 2) return 0;
   
   const priceValues = prices.map(p => p.price);
@@ -194,10 +255,8 @@ function calculateVolatility(prices) {
 
 /**
  * Calculates recent momentum (30-day vs 60-day average)
- * @param {Array} prices - Array of price points
- * @returns {number} Momentum score
  */
-function calculateMomentum(prices) {
+function calculateMomentum(prices: OsrsPricePoint[]): number {
   if (prices.length < 60) return 0;
   
   const recent30 = prices.slice(-30);
@@ -211,37 +270,26 @@ function calculateMomentum(prices) {
 
 /**
  * Calculates an investment score based on multiple factors
- * @param {number} priceChange - Overall price change percentage
- * @param {number} volatility - Price volatility percentage
- * @param {number} momentum - Recent momentum score
- * @returns {number} Investment score (0-100)
  */
-function calculateInvestmentScore(priceChange, volatility, momentum) {
-  // Strategy: High-volatility items with strong momentum for ROI potential
-  let score = 50; // Base score
+function calculateInvestmentScore(priceChange: number, volatility: number, momentum: number): number {
+  let score = 50;
   
-  // High volatility is GOOD for this strategy (up to +30 points)
-  // Items with 20%+ volatility get max points
   if (volatility >= 20) {
     score += 30;
   } else {
     score += (volatility / 20) * 30;
   }
   
-  // Strong positive momentum is critical (up to +30 points)
   score += Math.min(momentum * 3, 30);
   
-  // Recent strong price change indicates potential (up to +30 points)
-  // Looking for items that have moved 40%+ already
   if (priceChange >= 40) {
     score += 30;
   } else if (priceChange > 0) {
     score += (priceChange / 40) * 30;
   }
   
-  // Bonus for items showing breakout potential
   if (momentum > 10 && priceChange > 30 && volatility > 15) {
-    score += 10; // Hot item bonus
+    score += 10;
   }
   
   return Math.max(0, Math.min(100, score));
@@ -249,10 +297,8 @@ function calculateInvestmentScore(priceChange, volatility, momentum) {
 
 /**
  * Categorizes volume into descriptive levels
- * @param {number} volume - Trading volume
- * @returns {string} Volume category
  */
-function categorizeVolume(volume) {
+function categorizeVolume(volume: number): string {
   if (volume >= 1000000) return 'Very High';
   if (volume >= 100000) return 'High';
   if (volume >= 10000) return 'Medium';
@@ -262,11 +308,8 @@ function categorizeVolume(volume) {
 
 /**
  * Analyzes an item's price history
- * @param {Object} priceData - Raw price data from API
- * @param {Object} itemInfo - Item name, ID, membership status, and volume
- * @returns {Object} Analysis results
  */
-function analyzeItem(priceData, itemInfo) {
+function analyzeItem(priceData: OsrsPriceData, itemInfo: OsrsItemInfo): OsrsAnalysisResult | null {
   if (!priceData || !priceData.daily) {
     return null;
   }
@@ -286,10 +329,7 @@ function analyzeItem(priceData, itemInfo) {
   
   const investmentScore = calculateInvestmentScore(priceChange, volatility, momentum);
   
-  // Determine risk level based on volatility
-  // High risk: volatility >= 15%
-  // Low risk: volatility < 15%
-  const riskLevel = parseFloat(volatility) >= 15 ? 'high' : 'low';
+  const riskLevel: 'high' | 'low' = parseFloat(volatility.toFixed(2)) >= 15 ? 'high' : 'low';
   
   return {
     id: itemInfo.id,
@@ -304,7 +344,7 @@ function analyzeItem(priceData, itemInfo) {
     investmentScore: investmentScore.toFixed(1),
     dataPoints: prices.length,
     members: itemInfo.members,
-    riskLevel: riskLevel
+    riskLevel
   };
 }
 
@@ -312,13 +352,11 @@ function analyzeItem(priceData, itemInfo) {
 
 /**
  * Automated OSRS analysis
- * @param {Object} options - Configuration options
- * @returns {Promise<Object>} Analysis results
  */
-export async function runOSRSAutomated(options = {}) {
+export async function runOSRSAutomated(options: RunOptions = {}): Promise<OsrsAutomatedResults> {
   const { isGitHubActions = false, logFile = null } = options;
   
-  const logMessage = (message) => {
+  const logMessage = (message: string): void => {
     console.log(message);
     if (logFile) {
       const timestamp = new Date().toISOString();
@@ -342,9 +380,8 @@ export async function runOSRSAutomated(options = {}) {
   }
 
   // Filter items - include both members and F2P
-  const allItems = Object.entries(itemsData)
+  const allItems: OsrsItemInfo[] = Object.entries(itemsData)
     .filter(([id, item]) => {
-      // Only require basic data to be present
       if (!item.name || item.price === undefined || item.volume === undefined) {
         return false;
       }
@@ -352,9 +389,9 @@ export async function runOSRSAutomated(options = {}) {
     })
     .map(([id, item]) => ({
       id: parseInt(id),
-      name: item.name,
-      members: item.members !== false, // true if members item, false if F2P
-      volume: item.volume
+      name: item.name!,
+      members: item.members !== false,
+      volume: item.volume!
     }));
 
   logMessage(`Found ${allItems.length} suitable items`);
@@ -366,7 +403,7 @@ export async function runOSRSAutomated(options = {}) {
   logMessage(`Analyzing ALL ${itemsToAnalyze.length} items...`);
   logMessage('');
 
-  const results = [];
+  const results: OsrsAnalysisResult[] = [];
   let itemsChecked = 0;
   let successfulAnalyses = 0;
 
@@ -374,14 +411,11 @@ export async function runOSRSAutomated(options = {}) {
     const item = itemsToAnalyze[i];
     itemsChecked++;
     
-    // Progress update for every item
     logMessage(`Progress: ${itemsChecked}/${itemsToAnalyze.length} - Checking ${item.name}...`);
     
-    // Get current price from the item database (already fetched)
     const itemData = itemsData[item.id];
-    const currentPrice = itemData.price;
+    const currentPrice = itemData.price!;
     
-    // Get price history from local storage (no API call needed!)
     const priceData = getPriceHistory(item.id, item.name, currentPrice, item.volume);
     
     if (priceData) {
@@ -393,8 +427,6 @@ export async function runOSRSAutomated(options = {}) {
         logMessage(`  ✓ Analyzed (${successfulAnalyses} total)`);
       }
     }
-    
-    // No delay needed - we're just reading/writing local files now!
   }
 
   logMessage('');
@@ -431,19 +463,15 @@ export async function runOSRSAutomated(options = {}) {
 
 /**
  * Formats GP amount with appropriate suffix
- * @param {number} amount - GP amount
- * @returns {string} Formatted string
  */
-function formatGP(amount) {
+function formatGP(amount: number): string {
   return `${amount.toLocaleString()} gold`;
 }
 
 /**
  * Generates HTML email report from OSRS analysis results
- * @param {Object} osrsData - OSRS analysis results
- * @returns {string} HTML email report
  */
-function generateEmailReport(osrsData) {
+function generateEmailReport(osrsData: OsrsAutomatedResults): string {
   const currentDate = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
@@ -460,10 +488,10 @@ function generateEmailReport(osrsData) {
       </div>
     `;
   } else {
-    const { highRiskMembers = [], lowRiskMembers = [], highRiskF2P = [], lowRiskF2P = [], metadata = {} } = osrsData;
+    const { highRiskMembers = [], lowRiskMembers = [], highRiskF2P = [], lowRiskF2P = [] } = osrsData;
     
     // Helper function to generate items HTML
-    const generateItemsHtml = (items, category) => {
+    const generateItemsHtml = (items: OsrsAnalysisResult[], category: string): string => {
       if (items.length === 0) {
         return '<p class="no-items">No items found</p>';
       }
@@ -480,7 +508,7 @@ function generateEmailReport(osrsData) {
                       <span>Price: ${formatGP(item.currentPrice)}</span>
                       <span>Volume: ${item.volumeCategory}</span>
                       <span>Volatility: ${item.volatility}%</span>
-                      <span>Momentum: ${item.momentum > 0 ? '+' : ''}${item.momentum}%</span>
+                      <span>Momentum: ${parseFloat(item.momentum) > 0 ? '+' : ''}${item.momentum}%</span>
                     </div>
                   </td>
                 </tr>
@@ -550,9 +578,8 @@ ${generateItemsHtml(lowRiskF2P, 'low-risk-f2p')}
 
 /**
  * Loads OSRS subscriber list from Brevo contact list
- * @returns {Promise<Array>} Array of subscriber email addresses
  */
-async function loadSubscribers() {
+async function loadSubscribers(): Promise<string[]> {
   const apiKey = process.env.BREVO_API_KEY;
   const listId = 4; // OSRS Newsletter list
   
@@ -565,37 +592,28 @@ async function loadSubscribers() {
     const apiInstance = new brevo.ContactsApi();
     apiInstance.setApiKey(brevo.ContactsApiApiKeys.apiKey, apiKey);
     
-    // Get contacts from the list
-    const opts = {
-      limit: 500, // Max subscribers per request
-      offset: 0
-    };
-    
-    const response = await apiInstance.getContactsFromList(parseInt(listId), opts);
-    const emails = response.contacts.map(contact => contact.email);
+    const response = await apiInstance.getContactsFromList(listId, undefined, 500, 0);
+    const emails = (response as any).contacts.map((contact: any) => contact.email) as string[];
     
     console.log(`📋 Loaded ${emails.length} OSRS subscribers from Brevo list ${listId}`);
     return emails;
   } catch (error) {
-    console.error('❌ Failed to load subscribers from Brevo:', error.message);
-    if (error.response) {
-      console.error('Response data:', error.response.body);
-      console.error('Status code:', error.response.statusCode);
+    console.error('❌ Failed to load subscribers from Brevo:', (error as Error).message);
+    if ((error as any).response) {
+      console.error('Response data:', (error as any).response.body);
+      console.error('Status code:', (error as any).response.statusCode);
     }
     console.log('\n💡 TIP: List ID 4 may not exist. Falling back to test mode.');
     console.log('    Add your email below or create list ID 4 in Brevo dashboard.');
     
-    // TEMPORARY: Return a test email for development
-    // Replace with your email or remove this once you fix the list ID
-    return ['laserwolve@gmail.com']; // TODO: Replace with your actual email or fix list ID
+    return ['laserwolve@gmail.com'];
   }
 }
 
 /**
  * Sends newsletter via Brevo
- * @param {Array} subscribers - Array of subscriber emails
  */
-async function sendNewsletter(subscribers) {
+async function sendNewsletter(subscribers: string[]): Promise<void> {
   const apiKey = process.env.BREVO_API_KEY;
   
   if (!apiKey) {
@@ -609,11 +627,9 @@ async function sendNewsletter(subscribers) {
   }
   
   try {
-    // Configure Brevo API
     const apiInstance = new brevo.TransactionalEmailsApi();
     apiInstance.setApiKey(brevo.TransactionalEmailsApiApiKeys.apiKey, apiKey);
     
-    // Read the HTML report
     const htmlContent = fs.readFileSync('docs/osrs/index.html', 'utf8');
     
     const currentDate = new Date().toLocaleDateString('en-US', {
@@ -625,7 +641,6 @@ async function sendNewsletter(subscribers) {
     
     const subject = `Old School RuneScape Market Analysis - ${currentDate}`;
     
-    // Prepare email
     const sendSmtpEmail = new brevo.SendSmtpEmail();
     sendSmtpEmail.subject = subject;
     sendSmtpEmail.htmlContent = htmlContent;
@@ -645,25 +660,24 @@ async function sendNewsletter(subscribers) {
     
     const response = await apiInstance.sendTransacEmail(sendSmtpEmail);
     console.log(`✅ Newsletter sent successfully!`);
-    console.log(`Message ID: ${response.messageId}`);
+    console.log(`Message ID: ${(response as any).messageId}`);
     console.log(`Full response:`, JSON.stringify(response, null, 2));
   } catch (error) {
-    console.error(`❌ Failed to send newsletter:`, error.message);
-    if (error.response) {
-      console.error('Error response body:', error.response.body);
-      console.error('Error status code:', error.response.statusCode);
+    console.error(`❌ Failed to send newsletter:`, (error as Error).message);
+    if ((error as any).response) {
+      console.error('Error response body:', (error as any).response.body);
+      console.error('Error status code:', (error as any).response.statusCode);
     }
     console.error('Full error:', error);
-    // Don't throw - newsletter failure shouldn't break the analysis
   }
 }
 
 // ===== GITHUB ACTIONS RUNNER =====
 
 /**
- * Main entry point when run directly (e.g., node osrs.js or GitHub Actions)
+ * Main entry point when run directly
  */
-async function main() {
+async function main(): Promise<void> {
   const IS_GITHUB_ACTIONS = process.env.GITHUB_ACTIONS === 'true';
 
   console.log('🚀 OSRS GitHub Actions Analysis');
@@ -703,7 +717,6 @@ async function main() {
     console.log('Results saved to osrs-results.json');
     console.log('Updated docs/osrs/index.html');
     
-    // Log summary for GitHub Actions
     console.log('\n📊 RESULTS SUMMARY:');
     console.log(`High Risk Members: ${results.highRiskMembers?.length || 0} items`);
     console.log(`Low Risk Members: ${results.lowRiskMembers?.length || 0} items`);
@@ -717,21 +730,27 @@ async function main() {
     }
     
   } catch (error) {
-    console.error('❌ OSRS Analysis failed:', error.message);
+    console.error('❌ OSRS Analysis failed:', (error as Error).message);
     
-    // Save error info
-    const errorResult = {
-      error: error.message,
+    const errorResult: OsrsAutomatedResults = {
+      error: (error as Error).message,
+      highRiskMembers: [],
+      lowRiskMembers: [],
+      highRiskF2P: [],
+      lowRiskF2P: [],
+      totalAnalyzed: 0,
+      totalChecked: 0,
       metadata: {
         timestamp: new Date().toISOString(),
         environment: 'GitHub Actions',
-        failed: true
+        failed: true,
+        itemsAnalyzed: 0,
+        analysisTime: '0m 0s'
       }
     };
     
     fs.writeFileSync('osrs-results.json', JSON.stringify(errorResult, null, 2));
     
-    // Generate error report and update index.html
     const reportHtml = generateEmailReport(errorResult);
     fs.writeFileSync('docs/osrs/index.html', reportHtml);
     

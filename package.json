@@ -4,9 +4,11 @@
   "description": "Multi-game investment analyzer for premium currency trading (OSRS, EVE Online)",
   "type": "module",
   "scripts": {
-    "osrs-github": "node osrs-github-runner.js",
-    "eve-github": "node eve-github-runner.js",
-    "generate-report": "node generate-email-report.js"
+    "build": "tsc",
+    "osrs-github": "node dist/src/osrs.js",
+    "eve-github": "node dist/src/eve.js",
+    "sort": "node dist/sortItemsAndRegions.js",
+    "populate-osrs": "node dist/src/populateOsrsMarketHistory.js"
   },
   "keywords": [
     "osrs",
@@ -20,5 +22,9 @@
   "dependencies": {
     "@getbrevo/brevo": "^3.0.1",
     "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.3",
+    "typescript": "^5.9.3"
   }
 }

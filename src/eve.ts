@@ -7,7 +7,7 @@ import * as brevo from '@getbrevo/brevo';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const require = createRequire(import.meta.url);
-const pkg = require('../package.json');
+const pkg = require('../package.json') as { name: string; version: string };
 const HISTORY_FILE = path.join(__dirname, '..', 'data', 'eve-history.json');
 const ITEMS_FILE = path.join(__dirname, '..', 'data', 'eve-items.json');
 const REGIONS_FILE = path.join(__dirname, '..', 'data', 'eve-regions.json');
@@ -16,8 +16,128 @@ const RECOMMENDATIONS_LOG_FILE = path.join(__dirname, '..', 'data', 'eve-recomme
 const API_REQUEST_DELAY = 1000; // Milliseconds between ESI API calls
 const NUMBER_OF_ITEMS_TO_PROCESS = 10000;
 
+// ===== TYPE DEFINITIONS =====
+
+interface MarketHistoryEntry {
+  date: string;
+  average: number;
+  highest: number;
+  lowest: number;
+  volume: number;
+  order_count: number;
+}
+
+interface AggregationAccumulator {
+  date: string;
+  totalVolume: number;
+  weightedAvgSum: number;
+  highest: number;
+  lowest: number;
+  orderCount: number;
+}
+
+interface HistoryData {
+  [regionId: string]: {
+    [typeId: string]: MarketHistoryEntry[];
+  };
+}
+
+interface AggregatedData {
+  [typeId: string]: MarketHistoryEntry[];
+}
+
+interface ETagEntry {
+  etag?: string;
+  lastModified?: string;
+}
+
+interface ETagData {
+  [regionId: string]: {
+    [typeId: string]: ETagEntry;
+  };
+}
+
+interface ItemInfo {
+  id: number;
+  name: string;
+}
+
+interface AnalysisResult {
+  id: number;
+  name: string;
+  currentPrice: number;
+  priceChange: string;
+  priceChange7d: string;
+  priceChange30d: string;
+  volatility: string;
+  momentum: string;
+  volume: number;
+  volumeCategory: string;
+  investmentScore: string;
+  dataPoints: number;
+  riskLevel: 'high' | 'low';
+}
+
+interface MarketOverview {
+  totalItems: number;
+  avgMomentum: string;
+  avgVolatility: string;
+  itemsUp: number;
+  itemsDown: number;
+  itemsFlat: number;
+}
+
+interface NotableMover {
+  name: string;
+  priceChange7d: string;
+  currentPrice: number;
+  volumeCategory: string;
+}
+
+interface NotableMovers {
+  biggestGainers: NotableMover[];
+  biggestLosers: NotableMover[];
+}
+
+interface EVEAutomatedResults {
+  highRisk: AnalysisResult[];
+  lowRisk: AnalysisResult[];
+  marketOverview: MarketOverview;
+  notableMovers: NotableMovers;
+  totalAnalyzed: number;
+  totalChecked: number;
+  metadata?: ResultMetadata;
+  error?: string;
+}
+
+interface ResultMetadata {
+  itemsAnalyzed: number;
+  itemsFetched?: number;
+  analysisTime: string;
+  timestamp: string;
+  environment: string;
+  failed?: boolean;
+}
+
+interface OpinionResult {
+  introParagraph: string;
+  detailParagraph: string;
+}
+
+interface RecommendationLogEntry {
+  date: string;
+  highRisk: Partial<AnalysisResult>[];
+  lowRisk: Partial<AnalysisResult>[];
+  aiAnalysis: OpinionResult | null;
+  metadata?: ResultMetadata;
+}
+
+interface RunOptions {
+  logFile?: string | null;
+}
+
 // Dynamically construct USER_AGENT from GitHub Actions environment
-const getGitHubEmail = () => {
+const getGitHubEmail = (): string => {
   const actor = process.env.GITHUB_ACTOR;
   if (!actor) {
     throw new Error('GITHUB_ACTOR environment variable not set');
@@ -25,7 +145,7 @@ const getGitHubEmail = () => {
   return `${actor}@users.noreply.github.com`;
 };
 
-const getRepoUrl = () => {
+const getRepoUrl = (): string => {
   const serverUrl = process.env.GITHUB_SERVER_URL;
   const repository = process.env.GITHUB_REPOSITORY;
   if (!serverUrl || !repository) {
@@ -35,9 +155,9 @@ const getRepoUrl = () => {
 };
 
 // USER_AGENT will be constructed when needed
-let USER_AGENT = null;
+let USER_AGENT: string | null = null;
 
-const getUserAgent = () => {
+const getUserAgent = (): string => {
   if (!USER_AGENT) {
     USER_AGENT = `${pkg.name}/${pkg.version} (${getGitHubEmail()}; +${getRepoUrl()})`;
   }
@@ -46,9 +166,8 @@ const getUserAgent = () => {
 
 /**
  * Delays execution for a specified time
- * @param {number} ms - Milliseconds to wait
  */
-function delay(ms) {
+function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
@@ -57,10 +176,8 @@ function delay(ms) {
  * avoid exceeding Node.js's maximum string length with JSON.stringify.
  * Serializes each leaf value (e.g. a single item's history array) individually.
  * Expected structure: { outerKey: { innerKey: value, ... }, ... }
- * @param {string} filePath - Path to write the JSON file
- * @param {Object} data - The two-level nested object to serialize
  */
-async function writeJsonStreaming(filePath, data) {
+async function writeJsonStreaming(filePath: string, data: Record<string, Record<string, unknown>>): Promise<void> {
   const writeStream = fs.createWriteStream(filePath, { encoding: 'utf-8' });
 
   return new Promise((resolve, reject) => {
@@ -99,16 +216,13 @@ async function writeJsonStreaming(filePath, data) {
 }
 
 // ===== MARKET HISTORY POPULATION FUNCTIONS =====
-// NOTE: Population logic has been moved to main() function
 
 /**
  * Aggregates market history across all regions into a single dataset per item.
  * Uses volume-weighted average price, summed volumes, max high, min low.
- * @param {Object} historyData - Nested object: { regionId: { typeId: [...entries] } }
- * @returns {Object} Aggregated data: { typeId: [...merged entries] }
  */
-function aggregateRegionData(historyData) {
-  const byTypeAndDate = {}; // typeId -> date -> aggregation accumulators
+function aggregateRegionData(historyData: HistoryData): AggregatedData {
+  const byTypeAndDate: Record<string, Record<string, AggregationAccumulator>> = {};
 
   for (const regionId of Object.keys(historyData)) {
     const regionData = historyData[regionId];
@@ -139,7 +253,7 @@ function aggregateRegionData(historyData) {
   }
 
   // Convert accumulators to flat arrays sorted by date
-  const result = {};
+  const result: AggregatedData = {};
   for (const typeId of Object.keys(byTypeAndDate)) {
     const dates = Object.keys(byTypeAndDate[typeId]).sort();
     result[typeId] = dates.map(date => {
@@ -162,10 +276,8 @@ function aggregateRegionData(historyData) {
 
 /**
  * Calculates the percentage change in price over the period
- * @param {Array} history - Array of market data points
- * @returns {number} Percentage change
  */
-function calculatePriceChange(history) {
+function calculatePriceChange(history: MarketHistoryEntry[]): number {
   if (history.length < 2) return 0;
   
   const firstPrice = history[0].average;
@@ -176,10 +288,8 @@ function calculatePriceChange(history) {
 
 /**
  * Calculates price volatility (standard deviation)
- * @param {Array} history - Array of market data points
- * @returns {number} Volatility as percentage of mean
  */
-function calculateVolatility(history) {
+function calculateVolatility(history: MarketHistoryEntry[]): number {
   if (history.length < 2) return 0;
   
   const prices = history.map(day => day.average);
@@ -194,10 +304,8 @@ function calculateVolatility(history) {
 
 /**
  * Calculates recent momentum (30-day vs 60-day average)
- * @param {Array} history - Array of market data points
- * @returns {number} Momentum score
  */
-function calculateMomentum(history) {
+function calculateMomentum(history: MarketHistoryEntry[]): number {
   if (history.length < 60) return 0;
   
   const recent30 = history.slice(-30);
@@ -211,17 +319,12 @@ function calculateMomentum(history) {
 
 /**
  * Calculates an investment score based on multiple factors
- * @param {number} priceChange - Overall price change percentage
- * @param {number} volatility - Price volatility percentage
- * @param {number} momentum - Recent momentum score
- * @returns {number} Investment score (0-100)
  */
-function calculateInvestmentScore(priceChange, volatility, momentum) {
+function calculateInvestmentScore(priceChange: number, volatility: number, momentum: number): number {
   // Strategy: High-volatility items with positive momentum
   let score = 50; // Base score
   
   // High volatility is GOOD for speculation (up to +30 points)
-  // Items with 20%+ volatility get max points
   if (volatility >= 20) {
     score += 30;
   } else {
@@ -232,7 +335,6 @@ function calculateInvestmentScore(priceChange, volatility, momentum) {
   score += Math.min(momentum * 3, 30);
   
   // Recent strong price change indicates potential (up to +30 points)
-  // Looking for items that have moved 40%+ already
   if (priceChange >= 40) {
     score += 30;
   } else if (priceChange > 0) {
@@ -241,7 +343,7 @@ function calculateInvestmentScore(priceChange, volatility, momentum) {
   
   // Bonus for items showing breakout potential
   if (momentum > 10 && priceChange > 30 && volatility > 15) {
-    score += 10; // Hot item bonus
+    score += 10;
   }
   
   return Math.max(0, Math.min(100, score));
@@ -249,10 +351,8 @@ function calculateInvestmentScore(priceChange, volatility, momentum) {
 
 /**
  * Categorizes volume into descriptive levels
- * @param {number} volume - Trading volume
- * @returns {string} Volume category
  */
-function categorizeVolume(volume) {
+function categorizeVolume(volume: number): string {
   if (volume >= 10000) return 'Very High';
   if (volume >= 1000) return 'High';
   if (volume >= 100) return 'Medium';
@@ -262,10 +362,8 @@ function categorizeVolume(volume) {
 
 /**
  * Formats ISK amount with appropriate suffix
- * @param {number} amount - ISK amount
- * @returns {string} Formatted string
  */
-function formatISK(amount) {
+function formatISK(amount: number): string {
   if (amount >= 1000000000) {
     return `${(amount / 1000000000).toFixed(1)}B ISK`;
   } else if (amount >= 1000000) {
@@ -278,17 +376,14 @@ function formatISK(amount) {
 
 /**
  * Analyzes market data for an item
- * @param {Array} history - Market history data
- * @param {Object} itemInfo - Item name and ID
- * @returns {Object} Analysis results
  */
-function analyzeItem(history, itemInfo) {
+function analyzeItem(history: MarketHistoryEntry[], itemInfo: ItemInfo): AnalysisResult | null {
   if (!history || history.length === 0) {
     return null;
   }
   
   // Sort by date
-  history.sort((a, b) => new Date(a.date) - new Date(b.date));
+  history.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   
   const priceChange = calculatePriceChange(history);
   const volatility = calculateVolatility(history);
@@ -311,10 +406,7 @@ function analyzeItem(history, itemInfo) {
   
   const investmentScore = calculateInvestmentScore(priceChange, volatility, momentum);
   
-  // Determine risk level based on volatility
-  // High risk: volatility >= 15%
-  // Low risk: volatility < 15%
-  const riskLevel = parseFloat(volatility) >= 15 ? 'high' : 'low';
+  const riskLevel: 'high' | 'low' = parseFloat(volatility.toFixed(2)) >= 15 ? 'high' : 'low';
   
   return {
     id: itemInfo.id,
@@ -329,7 +421,7 @@ function analyzeItem(history, itemInfo) {
     volumeCategory: categorizeVolume(currentVolume || 0),
     investmentScore: investmentScore.toFixed(1),
     dataPoints: history.length,
-    riskLevel: riskLevel
+    riskLevel
   };
 }
 
@@ -337,18 +429,15 @@ function analyzeItem(history, itemInfo) {
 
 /**
  * Automated EVE analysis for GitHub Actions
- * @param {Object} options - Configuration options
- * @param {string} options.logFile - Path to log file
- * @returns {Promise<Object>} Analysis results
  */
-export async function runEVEAutomated(options = {}) {
+export async function runEVEAutomated(options: RunOptions = {}): Promise<EVEAutomatedResults> {
   const { logFile = null } = options;
   
-  const logMessage = (message) => {
+  const logMessage = (message: string): void => {
     console.log(message);
     if (logFile) {
       const timestamp = new Date().toISOString();
-      require('fs').appendFileSync(logFile, `${timestamp}: ${message}\n`);
+      fs.appendFileSync(logFile, `${timestamp}: ${message}\n`);
     }
   };
 
@@ -359,14 +448,14 @@ export async function runEVEAutomated(options = {}) {
   logMessage('');
 
   // Load history data (nested: regionId -> typeId -> entries)
-  let rawHistoryData = null;
+  let rawHistoryData: HistoryData;
   try {
     const historyContent = await fs.promises.readFile(HISTORY_FILE, 'utf-8');
     rawHistoryData = JSON.parse(historyContent);
     const regionCount = Object.keys(rawHistoryData).length;
     logMessage(`✅ Loaded history across ${regionCount} regions`);
   } catch (error) {
-    throw new Error(`Could not load history data: ${error.message}`);
+    throw new Error(`Could not load history data: ${(error as Error).message}`);
   }
 
   // Aggregate across regions for analysis
@@ -375,24 +464,24 @@ export async function runEVEAutomated(options = {}) {
   logMessage(`✅ Aggregated data for ${Object.keys(historyData).length} unique items`);
 
   // Load item names from eve-items.json
-  let itemsData = null;
+  let itemsData: Record<string, number>;
   try {
     const itemsContent = await fs.promises.readFile(ITEMS_FILE, 'utf-8');
     itemsData = JSON.parse(itemsContent);
     logMessage(`✅ Loaded ${Object.keys(itemsData).length} item names`);
   } catch (error) {
-    throw new Error(`Could not load items data: ${error.message}`);
+    throw new Error(`Could not load items data: ${(error as Error).message}`);
   }
 
   // Create a reverse lookup map (typeId -> name)
-  const typeIdToName = {};
+  const typeIdToName: Record<string, string> = {};
   for (const [name, typeId] of Object.entries(itemsData)) {
     typeIdToName[typeId] = name;
   }
 
   logMessage('');
 
-  const results = [];
+  const results: AnalysisResult[] = [];
   let itemsChecked = 0;
   let successfulAnalyses = 0;
 
@@ -410,7 +499,7 @@ export async function runEVEAutomated(options = {}) {
     }
     
     if (history && history.length > 0) {
-      const itemInfo = {
+      const itemInfo: ItemInfo = {
         id: parseInt(typeId),
         name: typeIdToName[typeId] || `Item ${typeId}`
       };
@@ -427,7 +516,7 @@ export async function runEVEAutomated(options = {}) {
   logMessage('');
   logMessage(`✅ EVE Analysis Complete! Analyzed ${successfulAnalyses} items`);
 
-  // Categorize results into 2 groups (no members in EVE)
+  // Categorize results into 2 groups
   const highRisk = results.filter(r => r.riskLevel === 'high')
     .sort((a, b) => parseFloat(b.investmentScore) - parseFloat(a.investmentScore))
     .slice(0, 5);
@@ -449,7 +538,7 @@ export async function runEVEAutomated(options = {}) {
     ? (allVolatilities.reduce((a, b) => a + b, 0) / allVolatilities.length).toFixed(2)
     : '0.00';
 
-  const marketOverview = {
+  const marketOverview: MarketOverview = {
     totalItems: results.length,
     avgMomentum,
     avgVolatility,
@@ -463,7 +552,7 @@ export async function runEVEAutomated(options = {}) {
     .filter(r => parseFloat(r.priceChange7d) !== 0)
     .sort((a, b) => parseFloat(b.priceChange7d) - parseFloat(a.priceChange7d));
   
-  const notableMovers = {
+  const notableMovers: NotableMovers = {
     biggestGainers: sortedByChange.slice(0, 3).map(r => ({
       name: r.name,
       priceChange7d: r.priceChange7d,
@@ -494,25 +583,23 @@ export async function runEVEAutomated(options = {}) {
  * Generates an AI-written opinion piece using GitHub Models API.
  * Uses the GITHUB_TOKEN that is automatically available in GitHub Actions.
  * Falls back to a default opinion if the API call fails.
- * @param {Object} analysisData - The analysis results with highRisk and lowRisk arrays
- * @returns {Promise<Object>} Object with { introParagraph, detailParagraph } as plain text
  */
-async function generateOpinion(analysisData, previousResults = null) {
+async function generateOpinion(analysisData: EVEAutomatedResults, previousResults: EVEAutomatedResults | null = null): Promise<OpinionResult> {
   const token = process.env.GITHUB_TOKEN;
   if (!token) {
     console.log('⚠️ GITHUB_TOKEN not set. Using default opinion.');
     return getDefaultOpinion(analysisData);
   }
 
-  const { highRisk = [], lowRisk = [], marketOverview = {}, notableMovers = {} } = analysisData;
+  const { highRisk = [], lowRisk = [], marketOverview = {} as MarketOverview, notableMovers = {} as NotableMovers } = analysisData;
 
   // Build a summary of the recommended items with price history
   const highRiskSummary = highRisk.map(item =>
-    `- ${item.name}: ${formatISK(item.currentPrice)}, Volume: ${item.volumeCategory}, Volatility: ${item.volatility}%, Momentum: ${item.momentum > 0 ? '+' : ''}${item.momentum}%, 7d change: ${item.priceChange7d > 0 ? '+' : ''}${item.priceChange7d}%, 30d change: ${item.priceChange30d > 0 ? '+' : ''}${item.priceChange30d}%`
+    `- ${item.name}: ${formatISK(item.currentPrice)}, Volume: ${item.volumeCategory}, Volatility: ${item.volatility}%, Momentum: ${item.momentum > '0' ? '+' : ''}${item.momentum}%, 7d change: ${parseFloat(item.priceChange7d) > 0 ? '+' : ''}${item.priceChange7d}%, 30d change: ${parseFloat(item.priceChange30d) > 0 ? '+' : ''}${item.priceChange30d}%`
   ).join('\n');
 
   const lowRiskSummary = lowRisk.map(item =>
-    `- ${item.name}: ${formatISK(item.currentPrice)}, Volume: ${item.volumeCategory}, Volatility: ${item.volatility}%, Momentum: ${item.momentum > 0 ? '+' : ''}${item.momentum}%, 7d change: ${item.priceChange7d > 0 ? '+' : ''}${item.priceChange7d}%, 30d change: ${item.priceChange30d > 0 ? '+' : ''}${item.priceChange30d}%`
+    `- ${item.name}: ${formatISK(item.currentPrice)}, Volume: ${item.volumeCategory}, Volatility: ${item.volatility}%, Momentum: ${item.momentum > '0' ? '+' : ''}${item.momentum}%, 7d change: ${parseFloat(item.priceChange7d) > 0 ? '+' : ''}${item.priceChange7d}%, 30d change: ${parseFloat(item.priceChange30d) > 0 ? '+' : ''}${item.priceChange30d}%`
   ).join('\n');
 
   // Market-wide trends
@@ -527,13 +614,13 @@ async function generateOpinion(analysisData, previousResults = null) {
     if (notableMovers.biggestGainers?.length > 0) {
       moversText += '\nBiggest Gainers:';
       for (const g of notableMovers.biggestGainers) {
-        moversText += `\n- ${g.name}: ${g.priceChange7d > 0 ? '+' : ''}${g.priceChange7d}% (${formatISK(g.currentPrice)}, Volume: ${g.volumeCategory})`;
+        moversText += `\n- ${g.name}: ${parseFloat(g.priceChange7d) > 0 ? '+' : ''}${g.priceChange7d}% (${formatISK(g.currentPrice)}, Volume: ${g.volumeCategory})`;
       }
     }
     if (notableMovers.biggestLosers?.length > 0) {
       moversText += '\nBiggest Losers:';
       for (const l of notableMovers.biggestLosers) {
-        moversText += `\n- ${l.name}: ${l.priceChange7d > 0 ? '+' : ''}${l.priceChange7d}% (${formatISK(l.currentPrice)}, Volume: ${l.volumeCategory})`;
+        moversText += `\n- ${l.name}: ${parseFloat(l.priceChange7d) > 0 ? '+' : ''}${l.priceChange7d}% (${formatISK(l.currentPrice)}, Volume: ${l.volumeCategory})`;
       }
     }
   }
@@ -566,18 +653,18 @@ async function generateOpinion(analysisData, previousResults = null) {
   let recentAnalysesText = '';
   try {
     const logContent = fs.readFileSync(RECOMMENDATIONS_LOG_FILE, 'utf-8');
-    const log = JSON.parse(logContent);
+    const log: RecommendationLogEntry[] = JSON.parse(logContent);
     const recentEntries = log
       .filter(entry => entry.aiAnalysis && entry.aiAnalysis.introParagraph)
-      .slice(-3); // Last 3 entries
+      .slice(-3);
     if (recentEntries.length > 0) {
       recentAnalysesText = '\n\nYOUR RECENT OPINION PIECES (do NOT repeat these — write something fresh and different):';
       for (const entry of recentEntries) {
         const entryDate = new Date(entry.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        recentAnalysesText += `\n\n[${entryDate}]:\n${entry.aiAnalysis.introParagraph}\n${entry.aiAnalysis.detailParagraph}`;
+        recentAnalysesText += `\n\n[${entryDate}]:\n${entry.aiAnalysis!.introParagraph}\n${entry.aiAnalysis!.detailParagraph}`;
       }
     }
-  } catch (e) {
+  } catch {
     // No log file yet, that's fine
   }
 
@@ -646,7 +733,7 @@ Rules:
       return getDefaultOpinion(analysisData);
     }
 
-    const data = await response.json();
+    const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
     const content = data.choices?.[0]?.message?.content?.trim();
 
     if (!content) {
@@ -679,17 +766,15 @@ Rules:
       };
     }
   } catch (error) {
-    console.error(`❌ Failed to generate AI opinion: ${error.message}`);
+    console.error(`❌ Failed to generate AI opinion: ${(error as Error).message}`);
     return getDefaultOpinion(analysisData);
   }
 }
 
 /**
  * Returns a default opinion when AI generation is unavailable
- * @param {Object} analysisData - The analysis results
- * @returns {Object} Object with { introParagraph, detailParagraph }
  */
-function getDefaultOpinion(analysisData) {
+function getDefaultOpinion(analysisData: EVEAutomatedResults): OpinionResult {
   const { highRisk = [], lowRisk = [] } = analysisData;
 
   const lowRiskNames = lowRisk.slice(0, 3).map(i => i.name).join(', ');
@@ -700,7 +785,7 @@ function getDefaultOpinion(analysisData) {
       ? `The low-risk segment continues to show steady performance with items like ${lowRiskNames}. Their consistent volume and low volatility make them solid choices for traders looking to preserve capital.`
       : 'The low-risk segment is quiet today — check back tomorrow for new opportunities.',
     detailParagraph: topHighRisk
-      ? `On the high-risk side, keep an eye on ${topHighRisk.name} at ${formatISK(topHighRisk.currentPrice)} with ${topHighRisk.momentum > 0 ? '+' : ''}${topHighRisk.momentum}% momentum. Volatile picks like these can pay off big if you time your trades right.`
+      ? `On the high-risk side, keep an eye on ${topHighRisk.name} at ${formatISK(topHighRisk.currentPrice)} with ${parseFloat(topHighRisk.momentum) > 0 ? '+' : ''}${topHighRisk.momentum}% momentum. Volatile picks like these can pay off big if you time your trades right.`
       : 'No standout high-risk picks today — sometimes the best trade is no trade at all.'
   };
 }
@@ -709,11 +794,8 @@ function getDefaultOpinion(analysisData) {
 
 /**
  * Generates HTML report from EVE analysis results
- * @param {Object} eveData - EVE analysis results
- * @param {Object} opinion - AI-generated opinion { introParagraph, detailParagraph }
- * @returns {string} HTML report
  */
-function generateReport(eveData, opinion) {
+function generateReport(eveData: EVEAutomatedResults, opinion: OpinionResult | null): string {
   const currentDate = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
@@ -730,10 +812,10 @@ function generateReport(eveData, opinion) {
       </div>
     `;
   } else {
-    const { highRisk = [], lowRisk = [], metadata = {} } = eveData;
+    const { highRisk = [], lowRisk = [] } = eveData;
     
     // Helper function to generate items HTML
-    const generateItemsHtml = (items) => {
+    const generateItemsHtml = (items: AnalysisResult[]): string => {
       if (items.length === 0) {
         return `<tr><td><p class="no-items">No items found</p></td></tr>`;
       }
@@ -751,7 +833,7 @@ function generateReport(eveData, opinion) {
                       <span>Price: ${formatISK(item.currentPrice)}</span>
                       <span>Volume: ${item.volumeCategory}</span>
                       <span>Volatility: ${item.volatility}%</span>
-                      <span>Momentum: ${item.momentum > 0 ? '+' : ''}${item.momentum}%</span>
+                      <span>Momentum: ${parseFloat(item.momentum) > 0 ? '+' : ''}${item.momentum}%</span>
                     </div>
                   </td>
                 </tr>
@@ -816,10 +898,8 @@ ${generateItemsHtml(lowRisk)}
 
 /**
  * Escapes HTML special characters in a string
- * @param {string} text - Text to escape
- * @returns {string} Escaped text
  */
-function escapeHtml(text) {
+function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -832,9 +912,8 @@ function escapeHtml(text) {
 
 /**
  * Loads EVE subscriber list from Brevo contact list
- * @returns {Promise<Array>} Array of subscriber email addresses
  */
-async function loadSubscribers() {
+async function loadSubscribers(): Promise<string[]> {
   const apiKey = process.env.BREVO_API_KEY;
   const listId = 3; // EVE Online Newsletter list
   
@@ -848,27 +927,21 @@ async function loadSubscribers() {
     apiInstance.setApiKey(brevo.ContactsApiApiKeys.apiKey, apiKey);
     
     // Get contacts from the list
-    const opts = {
-      limit: 500, // Max subscribers per request
-      offset: 0
-    };
-    
-    const response = await apiInstance.getContactsFromList(parseInt(listId), opts);
-    const emails = response.contacts.map(contact => contact.email);
+    const response = await apiInstance.getContactsFromList(listId, undefined, 500, 0);
+    const emails = (response as any).contacts.map((contact: any) => contact.email) as string[];
     
     console.log(`📋 Loaded ${emails.length} EVE subscribers from Brevo list ${listId}`);
     return emails;
   } catch (error) {
-    console.error('❌ Failed to load subscribers from Brevo:', error.message);
+    console.error('❌ Failed to load subscribers from Brevo:', (error as Error).message);
     return [];
   }
 }
 
 /**
  * Sends newsletter via Brevo
- * @param {Array} subscribers - Array of subscriber emails
  */
-async function sendNewsletter(subscribers) {
+async function sendNewsletter(subscribers: string[]): Promise<void> {
   const apiKey = process.env.BREVO_API_KEY;
   
   if (!apiKey) {
@@ -914,9 +987,9 @@ async function sendNewsletter(subscribers) {
     
     console.log(`\n📧 Sending EVE newsletter to ${subscribers.length} subscriber(s)...`);
     const response = await apiInstance.sendTransacEmail(sendSmtpEmail);
-    console.log(`✅ Newsletter sent successfully! Message ID: ${response.messageId}`);
+    console.log(`✅ Newsletter sent successfully! Message ID: ${(response as any).messageId}`);
   } catch (error) {
-    console.error(`❌ Failed to send newsletter:`, error.message);
+    console.error(`❌ Failed to send newsletter:`, (error as Error).message);
     // Don't throw - newsletter failure shouldn't break the analysis
   }
 }
@@ -926,7 +999,7 @@ async function sendNewsletter(subscribers) {
 /**
  * Main entry point for GitHub Actions workflow
  */
-async function main() {
+async function main(): Promise<void> {
   console.log('🚀 EVE Online Market Analyzer');
   console.log('==============================');
   console.log('Running in GitHub Actions');
@@ -941,12 +1014,12 @@ async function main() {
     
     // Load items from eve-items.json
     const itemsFilePath = path.join(__dirname, '..', 'data', 'eve-items.json');
-    const itemsData = JSON.parse(await fs.promises.readFile(itemsFilePath, 'utf-8'));
+    const itemsData: Record<string, number> = JSON.parse(await fs.promises.readFile(itemsFilePath, 'utf-8'));
     const itemNames = Object.keys(itemsData);
     const totalItems = itemNames.length;
     
     // Load regions from eve-regions.json
-    const regionsData = JSON.parse(await fs.promises.readFile(REGIONS_FILE, 'utf-8'));
+    const regionsData: Record<string, number> = JSON.parse(await fs.promises.readFile(REGIONS_FILE, 'utf-8'));
     const regionNames = Object.keys(regionsData);
     const totalRegions = regionNames.length;
     const totalRequests = totalRegions * totalItems;
@@ -955,25 +1028,23 @@ async function main() {
     console.log('');
     
     // Load existing history if available
-    // Structure: { regionId: { typeId: [...entries] } }
-    let historyData = {};
+    let historyData: HistoryData = {};
     try {
       const existingData = await fs.promises.readFile(HISTORY_FILE, 'utf-8');
       historyData = JSON.parse(existingData);
       const existingRegions = Object.keys(historyData).length;
       console.log(`Loaded existing history for ${existingRegions} regions`);
-    } catch (error) {
+    } catch {
       console.log('No existing history file found, starting fresh');
     }
     
     // Load cached ETags for conditional requests
-    // Structure: { regionId: { typeId: { etag: "...", lastModified: "..." } } }
-    let etagData = {};
+    let etagData: ETagData = {};
     try {
       const existingEtags = await fs.promises.readFile(ETAGS_FILE, 'utf-8');
       etagData = JSON.parse(existingEtags);
       console.log('Loaded cached ETags for conditional requests');
-    } catch (error) {
+    } catch {
       console.log('No cached ETags found, all requests will be full fetches');
     }
     
@@ -984,7 +1055,6 @@ async function main() {
     let requestCount = 0;
     
     for (let r = 0; r < totalRegions; r++) {
-      // Stop if we've hit the processing limit
       if (requestCount >= NUMBER_OF_ITEMS_TO_PROCESS) break;
       
       const regionName = regionNames[r];
@@ -1001,7 +1071,6 @@ async function main() {
       }
       
       for (let i = 0; i < totalItems; i++) {
-        // Stop if we've hit the processing limit
         if (requestCount >= NUMBER_OF_ITEMS_TO_PROCESS) break;
         
         const itemName = itemNames[i];
@@ -1017,7 +1086,7 @@ async function main() {
         const url = `https://esi.evetech.net/latest/markets/${regionId}/history/?datasource=tranquility&type_id=${typeId}`;
         
         // Build headers with conditional request support
-        const headers = {
+        const headers: Record<string, string> = {
           'Accept': 'application/json',
           'User-Agent': getUserAgent(),
           'X-Compatibility-Date': '2025-12-16'
@@ -1036,7 +1105,6 @@ async function main() {
           const response = await fetch(url, { headers });
           
           if (response.status === 304) {
-            // Data hasn't changed since last fetch, keep existing data
             skipped++;
             continue;
           } else if (response.ok) {
@@ -1054,14 +1122,13 @@ async function main() {
               };
             }
           } else if (response.status === 404) {
-            // Item not marketable in this region, skip
             continue;
           } else {
             console.error(`  Error fetching ${itemName} (${typeId}) in ${regionName}: HTTP ${response.status}`);
             errors++;
           }
         } catch (error) {
-          console.error(`  Error fetching ${itemName} (${typeId}) in ${regionName}: ${error.message}`);
+          console.error(`  Error fetching ${itemName} (${typeId}) in ${regionName}: ${(error as Error).message}`);
           errors++;
         }
         
@@ -1071,8 +1138,8 @@ async function main() {
     }
     
     // Save the populated history and ETags (streaming to avoid max string length)
-    await writeJsonStreaming(HISTORY_FILE, historyData);
-    await writeJsonStreaming(ETAGS_FILE, etagData);
+    await writeJsonStreaming(HISTORY_FILE, historyData as unknown as Record<string, Record<string, unknown>>);
+    await writeJsonStreaming(ETAGS_FILE, etagData as unknown as Record<string, Record<string, unknown>>);
     console.log('');
     console.log(`✅ Populated history: ${fetched} fetched, ${skipped} unchanged (304), ${errors} errors across ${totalRegions} regions`);
     console.log(`Saved to ${HISTORY_FILE}`);
@@ -1099,12 +1166,12 @@ async function main() {
     };
     
     // Load previous results for historical comparison
-    let previousResults = null;
+    let previousResults: EVEAutomatedResults | null = null;
     try {
       const prevData = fs.readFileSync('eve-results.json', 'utf-8');
       previousResults = JSON.parse(prevData);
       console.log('📋 Loaded previous results for comparison');
-    } catch (e) {
+    } catch {
       console.log('ℹ️ No previous results found for comparison');
     }
     
@@ -1120,15 +1187,15 @@ async function main() {
     
     // Append to recommendations log
     try {
-      let log = [];
+      let log: RecommendationLogEntry[] = [];
       try {
         const existing = fs.readFileSync(RECOMMENDATIONS_LOG_FILE, 'utf-8');
         log = JSON.parse(existing);
-      } catch (e) {
+      } catch {
         // No existing log file, start fresh
       }
       
-      const logEntry = {
+      const logEntry: RecommendationLogEntry = {
         date: new Date().toISOString(),
         highRisk: (results.highRisk || []).map(item => ({
           id: item.id,
@@ -1169,13 +1236,13 @@ async function main() {
       fs.writeFileSync(RECOMMENDATIONS_LOG_FILE, JSON.stringify(log, null, 2));
       console.log(`📝 Appended to recommendations log (${log.length} entries total)`);
     } catch (logError) {
-      console.error('⚠️ Failed to update recommendations log:', logError.message);
+      console.error('⚠️ Failed to update recommendations log:', (logError as Error).message);
     }
     
     console.log('\n✅ Analysis Complete!');
-    console.log(`Total time: ${results.metadata.analysisTime}`);
+    console.log(`Total time: ${results.metadata!.analysisTime}`);
     console.log(`Items fetched: ${fetched}`);
-    console.log(`Items analyzed: ${results.metadata.itemsAnalyzed}`);
+    console.log(`Items analyzed: ${results.metadata!.itemsAnalyzed}`);
     console.log('Results saved to eve-results.json');
     console.log('Updated docs/eve/index.html');
     
@@ -1189,16 +1256,24 @@ async function main() {
     // await sendNewsletter(subscribers);
     
   } catch (error) {
-    console.error('❌ Analysis failed:', error.message);
-    console.error(error.stack);
+    console.error('❌ Analysis failed:', (error as Error).message);
+    console.error((error as Error).stack);
     
     // Save error info
-    const errorResult = {
-      error: error.message,
+    const errorResult: EVEAutomatedResults = {
+      error: (error as Error).message,
+      highRisk: [],
+      lowRisk: [],
+      marketOverview: { totalItems: 0, avgMomentum: '0', avgVolatility: '0', itemsUp: 0, itemsDown: 0, itemsFlat: 0 },
+      notableMovers: { biggestGainers: [], biggestLosers: [] },
+      totalAnalyzed: 0,
+      totalChecked: 0,
       metadata: {
         timestamp: new Date().toISOString(),
         environment: 'GitHub Actions',
-        failed: true
+        failed: true,
+        itemsAnalyzed: 0,
+        analysisTime: '0m 0s'
       }
     };
     

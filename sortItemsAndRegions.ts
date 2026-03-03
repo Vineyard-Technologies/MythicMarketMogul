@@ -15,20 +15,22 @@ const REGIONS_FILE = path.join(__dirname, 'data', 'eve-regions.json');
 const USER_AGENT = 'eve-market-sorter/1.0 (GitHub Actions)';
 const DELAY_MS = 1000;
 
+interface EveOrder {
+  type_id: number;
+  [key: string]: unknown;
+}
+
 /**
  * Delays execution for a specified time
- * @param {number} ms - Milliseconds to wait
  */
-function delay(ms) {
+function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**
  * Fetches page 1 for a region and returns the X-Pages count
- * @param {number} regionId - EVE region ID
- * @returns {Promise<number>} Total number of order pages
  */
-async function fetchPageCount(regionId) {
+async function fetchPageCount(regionId: number): Promise<number> {
   const url = `https://esi.evetech.net/latest/markets/${regionId}/orders/?datasource=tranquility&order_type=all&page=1`;
   
   try {
@@ -49,19 +51,17 @@ async function fetchPageCount(regionId) {
     return totalPages;
     
   } catch (error) {
-    console.error(`  ❌ ${error.message}`);
+    console.error(`  ❌ ${(error as Error).message}`);
     return 0;
   }
 }
 
 /**
  * Fetches all orders for a region across all pages
- * @param {number} regionId - EVE region ID
- * @returns {Promise<Array>} All orders for the region
  */
-async function fetchAllOrdersForRegion(regionId) {
+async function fetchAllOrdersForRegion(regionId: number): Promise<EveOrder[]> {
   console.log(`\nFetching all orders for region ${regionId}...`);
-  const allOrders = [];
+  const allOrders: EveOrder[] = [];
   
   const firstUrl = `https://esi.evetech.net/latest/markets/${regionId}/orders/?datasource=tranquility&order_type=all&page=1`;
   
@@ -78,7 +78,7 @@ async function fetchAllOrdersForRegion(regionId) {
       return [];
     }
     
-    const firstPageOrders = await response.json();
+    const firstPageOrders: EveOrder[] = await response.json();
     allOrders.push(...firstPageOrders);
     
     const totalPages = parseInt(response.headers.get('X-Pages') || '1');
@@ -103,14 +103,14 @@ async function fetchAllOrdersForRegion(regionId) {
           continue;
         }
         
-        const pageOrders = await pageResponse.json();
+        const pageOrders: EveOrder[] = await pageResponse.json();
         allOrders.push(...pageOrders);
         
         if (page % 10 === 0 || page === totalPages) {
           console.log(`  Page ${page}/${totalPages}: ${allOrders.length} total orders so far`);
         }
       } catch (error) {
-        console.error(`  ❌ Error fetching page ${page}: ${error.message}`);
+        console.error(`  ❌ Error fetching page ${page}: ${(error as Error).message}`);
       }
     }
     
@@ -118,7 +118,7 @@ async function fetchAllOrdersForRegion(regionId) {
     return allOrders;
     
   } catch (error) {
-    console.error(`  ❌ Error fetching orders for region ${regionId}: ${error.message}`);
+    console.error(`  ❌ Error fetching orders for region ${regionId}: ${(error as Error).message}`);
     return [];
   }
 }
@@ -126,7 +126,7 @@ async function fetchAllOrdersForRegion(regionId) {
 /**
  * Main function
  */
-async function main() {
+async function main(): Promise<void> {
   const startTime = Date.now();
   console.log('🚀 EVE Items and Regions Sorter');
   console.log('================================');
@@ -134,8 +134,8 @@ async function main() {
   
   // Load regions and items
   console.log('📂 Loading data files...');
-  const regionsData = JSON.parse(fs.readFileSync(REGIONS_FILE, 'utf-8'));
-  const itemsData = JSON.parse(fs.readFileSync(ITEMS_FILE, 'utf-8'));
+  const regionsData: Record<string, number> = JSON.parse(fs.readFileSync(REGIONS_FILE, 'utf-8'));
+  const itemsData: Record<string, number> = JSON.parse(fs.readFileSync(ITEMS_FILE, 'utf-8'));
   
   const regionNames = Object.keys(regionsData);
   console.log(`  Loaded ${regionNames.length} regions`);
@@ -143,7 +143,7 @@ async function main() {
   console.log('');
   
   // Track page counts per region
-  const regionPageCounts = {};
+  const regionPageCounts: Record<string, number> = {};
   
   // Phase 1: Fetch page counts for each region (one request each)
   console.log('📊 Phase 1: Fetching page counts for each region...');
@@ -174,7 +174,7 @@ async function main() {
     });
   
   const sortedRegions = sortedRegionEntries
-    .reduce((obj, [name, id]) => {
+    .reduce<Record<string, number>>((obj, [name, id]) => {
       obj[name] = id;
       return obj;
     }, {});
@@ -196,7 +196,7 @@ async function main() {
   const orders = await fetchAllOrdersForRegion(topRegionId);
   
   // Count orders per item (type_id)
-  const itemOrderCounts = {};
+  const itemOrderCounts: Record<string, number> = {};
   for (const order of orders) {
     const typeId = order.type_id;
     if (!itemOrderCounts[typeId]) {
@@ -209,14 +209,14 @@ async function main() {
   console.log('🔄 Sorting items by order volume...');
   
   // Create reverse lookup from typeId to name
-  const typeIdToName = {};
+  const typeIdToName: Record<string, string> = {};
   for (const [name, typeId] of Object.entries(itemsData)) {
     typeIdToName[typeId] = name;
   }
   
   const sortedItems = Object.entries(itemOrderCounts)
     .sort((a, b) => b[1] - a[1])
-    .reduce((obj, [typeId, count]) => {
+    .reduce<Record<string, number>>((obj, [typeId, count]) => {
       const itemName = typeIdToName[typeId];
       if (itemName) {
         obj[itemName] = parseInt(typeId);
@@ -245,8 +245,8 @@ async function main() {
   
   console.log('');
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-  const minutes = Math.floor(elapsed / 60);
-  const seconds = (elapsed % 60).toFixed(1);
+  const minutes = Math.floor(parseFloat(elapsed) / 60);
+  const seconds = (parseFloat(elapsed) % 60).toFixed(1);
   console.log(`✅ Done! Files sorted by order volume. (${minutes}m ${seconds}s)`);
 }
 

@@ -10,11 +10,22 @@ const HISTORY_API_BASE = 'https://api.weirdgloop.org/exchange/history/osrs/all?i
 const OUTPUT_FILE = path.join(__dirname, '..', 'data', 'osrs-history.json');
 const DELAY_MS = 10000; // 10 seconds between requests
 
+interface OsrsItemDump {
+  id?: number;
+  ID?: number;
+  name?: string;
+  [key: string]: unknown;
+}
+
+interface OsrsHistoryData {
+  [itemId: string]: unknown;
+}
+
 // Helper function to delay execution
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
 
 // Fetch item list
-async function fetchItemList() {
+async function fetchItemList(): Promise<Record<string, OsrsItemDump> | OsrsItemDump[]> {
     console.log('Fetching item list...');
     const response = await fetch(ITEM_LIST_URL);
     if (!response.ok) {
@@ -25,7 +36,7 @@ async function fetchItemList() {
 }
 
 // Fetch historical data for a specific item
-async function fetchItemHistory(itemId) {
+async function fetchItemHistory(itemId: number): Promise<unknown> {
     console.log(`Fetching history for item ID: ${itemId}`);
     const response = await fetch(`${HISTORY_API_BASE}${itemId}`);
     
@@ -55,22 +66,22 @@ async function fetchItemHistory(itemId) {
 }
 
 // Main function to populate the history file
-async function populateOsrsMarketHistory() {
+async function populateOsrsMarketHistory(): Promise<void> {
     try {
         // Fetch the item list
         const itemData = await fetchItemList();
         
         // Extract item IDs from the dump
         // The structure might vary, so we need to handle different formats
-        let itemIds = [];
+        let itemIds: number[] = [];
         
         if (Array.isArray(itemData)) {
-            itemIds = itemData.map(item => item.id).filter(id => id != null);
+            itemIds = itemData.map(item => item.id!).filter((id): id is number => id != null);
         } else if (typeof itemData === 'object') {
             // If it's an object, get all IDs from the values
             itemIds = Object.values(itemData)
                 .map(item => item.id || item.ID)
-                .filter(id => id != null);
+                .filter((id): id is number => id != null);
         }
         
         console.log(`Found ${itemIds.length} items to process`);
@@ -83,12 +94,12 @@ async function populateOsrsMarketHistory() {
         console.log('---');
         
         // Initialize or load existing history data
-        let historyData = {};
+        let historyData: OsrsHistoryData = {};
         try {
             const existingData = await fs.readFile(OUTPUT_FILE, 'utf-8');
             historyData = JSON.parse(existingData);
             console.log(`Loaded existing data for ${Object.keys(historyData).length} items`);
-        } catch (error) {
+        } catch {
             console.log('No existing history file found, starting fresh');
         }
         
