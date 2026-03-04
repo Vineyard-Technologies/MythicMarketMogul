@@ -37,9 +37,13 @@ jobs:
       if: steps.check-day.outputs.is_wednesday == 'true' || github.event_name == 'workflow_dispatch'
       run: npm install
 
+    - name: Build TypeScript
+      if: steps.check-day.outputs.is_wednesday == 'true' || github.event_name == 'workflow_dispatch'
+      run: npm run build
+
     - name: Sort items and regions
       if: steps.check-day.outputs.is_wednesday == 'true' || github.event_name == 'workflow_dispatch'
-      run: node sortItemsAndRegions.js
+      run: npm run sort
 
     - name: Commit sorted data
       if: steps.check-day.outputs.is_wednesday == 'true' || github.event_name == 'workflow_dispatch'
