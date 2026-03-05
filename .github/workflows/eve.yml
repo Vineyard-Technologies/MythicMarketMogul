@@ -78,13 +78,16 @@ jobs:
         
     - name: Install dependencies
       run: npm install
+
+    - name: Build TypeScript
+      run: npm run build
         
     - name: Run EVE Analysis
       env:
         GITHUB_ACTIONS: 'true'
         GITHUB_TOKEN: ${{ github.token }}
         BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
-      run: node src/eve.js
+      run: node dist/src/eve.js
         
     - name: Commit and push reports
       run: |

@@ -25,12 +25,15 @@ jobs:
         
     - name: Install dependencies
       run: npm install
+
+    - name: Build TypeScript
+      run: npm run build
         
     - name: Run OSRS Analysis
       env:
         GITHUB_ACTIONS: 'true'
         BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
-      run: node src/osrs.js
+      run: node dist/src/osrs.js
         
     - name: Commit and push reports
       run: |
