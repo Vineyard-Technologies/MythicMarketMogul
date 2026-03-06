@@ -589,10 +589,9 @@ async function loadSubscribers(): Promise<string[]> {
   }
   
   try {
-    const apiInstance = new brevo.ContactsApi();
-    apiInstance.setApiKey(brevo.ContactsApiApiKeys.apiKey, apiKey);
+    const client = new brevo.BrevoClient({ apiKey });
     
-    const response = await apiInstance.getContactsFromList(listId, undefined, 500, 0);
+    const response = await client.contacts.getContactsFromList({ listId, limit: 500, offset: 0 });
     const emails = (response as any).contacts.map((contact: any) => contact.email) as string[];
     
     console.log(`📋 Loaded ${emails.length} OSRS subscribers from Brevo list ${listId}`);
@@ -627,8 +626,7 @@ async function sendNewsletter(subscribers: string[]): Promise<void> {
   }
   
   try {
-    const apiInstance = new brevo.TransactionalEmailsApi();
-    apiInstance.setApiKey(brevo.TransactionalEmailsApiApiKeys.apiKey, apiKey);
+    const client = new brevo.BrevoClient({ apiKey });
     
     const htmlContent = fs.readFileSync('docs/osrs/index.html', 'utf8');
     
@@ -641,24 +639,23 @@ async function sendNewsletter(subscribers: string[]): Promise<void> {
     
     const subject = `Old School RuneScape Market Analysis - ${currentDate}`;
     
-    const sendSmtpEmail = new brevo.SendSmtpEmail();
-    sendSmtpEmail.subject = subject;
-    sendSmtpEmail.htmlContent = htmlContent;
-    sendSmtpEmail.sender = {
-      name: 'Mythic Market Mogul',
-      email: 'reports@vineyardtechnologies.org'
-    };
-    sendSmtpEmail.to = subscribers.map(email => ({ email }));
-    sendSmtpEmail.replyTo = {
-      email: 'reports@vineyardtechnologies.org',
-      name: 'Mythic Market Mogul'
-    };
-    
     console.log(`\n📧 Sending OSRS newsletter to ${subscribers.length} subscriber(s)...`);
     console.log(`Recipients: ${subscribers.join(', ')}`);
     console.log(`Subject: ${subject}`);
     
-    const response = await apiInstance.sendTransacEmail(sendSmtpEmail);
+    const response = await client.transactionalEmails.sendTransacEmail({
+      subject,
+      htmlContent,
+      sender: {
+        name: 'Mythic Market Mogul',
+        email: 'reports@vineyardtechnologies.org'
+      },
+      to: subscribers.map(email => ({ email })),
+      replyTo: {
+        email: 'reports@vineyardtechnologies.org',
+        name: 'Mythic Market Mogul'
+      }
+    });
     console.log(`✅ Newsletter sent successfully!`);
     console.log(`Message ID: ${(response as any).messageId}`);
     console.log(`Full response:`, JSON.stringify(response, null, 2));
