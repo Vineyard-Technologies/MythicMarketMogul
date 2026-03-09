@@ -7,12 +7,12 @@ import * as brevo from '@getbrevo/brevo';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const require = createRequire(import.meta.url);
-const pkg = require('../package.json') as { name: string; version: string };
-const HISTORY_FILE = path.join(__dirname, '..', 'data', 'eve-history.json');
-const ITEMS_FILE = path.join(__dirname, '..', 'data', 'eve-items.json');
-const REGIONS_FILE = path.join(__dirname, '..', 'data', 'eve-regions.json');
-const ETAGS_FILE = path.join(__dirname, '..', 'data', 'eve-etags.json');
-const RECOMMENDATIONS_LOG_FILE = path.join(__dirname, '..', 'data', 'eve-recommendations-log.json');
+const pkg = require(path.join(__dirname, '..', '..', 'package.json')) as { name: string; version: string };
+const HISTORY_FILE = path.join(__dirname, '..', '..', 'data', 'eve-history.json');
+const ITEMS_FILE = path.join(__dirname, '..', '..', 'data', 'eve-items.json');
+const REGIONS_FILE = path.join(__dirname, '..', '..', 'data', 'eve-regions.json');
+const ETAGS_FILE = path.join(__dirname, '..', '..', 'data', 'eve-etags.json');
+const RECOMMENDATIONS_LOG_FILE = path.join(__dirname, '..', '..', 'data', 'eve-recommendations-log.json');
 const API_REQUEST_DELAY = 1000; // Milliseconds between ESI API calls
 const NUMBER_OF_ITEMS_TO_PROCESS = 10000;
 
@@ -1009,7 +1009,7 @@ async function main(): Promise<void> {
     console.log('');
     
     // Load items from eve-items.json
-    const itemsFilePath = path.join(__dirname, '..', 'data', 'eve-items.json');
+    const itemsFilePath = path.join(__dirname, '..', '..', 'data', 'eve-items.json');
     const itemsData: Record<string, number> = JSON.parse(await fs.promises.readFile(itemsFilePath, 'utf-8'));
     const itemNames = Object.keys(itemsData);
     const totalItems = itemNames.length;

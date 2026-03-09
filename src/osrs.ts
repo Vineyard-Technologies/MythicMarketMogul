@@ -10,7 +10,7 @@ const __dirname = path.dirname(__filename);
 
 // Load package.json for app name and version
 const require = createRequire(import.meta.url);
-const pkg = require('../package.json') as { name: string; version: string };
+const pkg = require(path.join(__dirname, '..', '..', 'package.json')) as { name: string; version: string };
 
 // ===== TYPE DEFINITIONS =====
 
@@ -116,7 +116,7 @@ const getRepoUrl = (): string => {
 const USER_AGENT = `${pkg.name}/${pkg.version} (${getGitHubEmail()}; +${getRepoUrl()})`;
 
 // Path to local history file
-const HISTORY_FILE = path.join(__dirname, '..', 'data', 'osrs-history.json');
+const HISTORY_FILE = path.join(__dirname, '..', '..', 'data', 'osrs-history.json');
 
 // ===== LOCAL HISTORY FUNCTIONS =====
 

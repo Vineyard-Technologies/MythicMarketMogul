@@ -7,7 +7,7 @@ const __dirname = path.dirname(__filename);
 
 const ITEM_LIST_URL = 'https://chisel.weirdgloop.org/gazproj/gazbot/os_dump.json';
 const HISTORY_API_BASE = 'https://api.weirdgloop.org/exchange/history/osrs/all?id=';
-const OUTPUT_FILE = path.join(__dirname, '..', 'data', 'osrs-history.json');
+const OUTPUT_FILE = path.join(__dirname, '..', '..', 'data', 'osrs-history.json');
 const DELAY_MS = 10000; // 10 seconds between requests
 
 interface OsrsItemDump {
