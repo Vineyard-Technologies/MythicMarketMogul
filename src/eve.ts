@@ -878,17 +878,19 @@ ${generateItemsHtml(lowRisk)}
 
   // Update the opinion section
   if (opinion) {
+    const allItems = [...(eveData.highRisk || []), ...(eveData.lowRisk || [])];
+
     // Update the intro paragraph using comment markers
     template = template.replace(
       /<!-- EVE_OPINION_INTRO_START -->[\s\S]*?<!-- EVE_OPINION_INTRO_END -->/,
-      `<!-- EVE_OPINION_INTRO_START --><em>${currentDate}</em> — ${escapeHtml(opinion.introParagraph)}<!-- EVE_OPINION_INTRO_END -->`
+      `<!-- EVE_OPINION_INTRO_START --><em>${currentDate}</em> — ${linkifyItemNames(escapeHtml(opinion.introParagraph), allItems)}<!-- EVE_OPINION_INTRO_END -->`
     );
 
     // Update the detail paragraph using comment markers
     if (opinion.detailParagraph) {
       template = template.replace(
         /<!-- EVE_OPINION_DETAIL_START -->[\s\S]*?<!-- EVE_OPINION_DETAIL_END -->/,
-        `<!-- EVE_OPINION_DETAIL_START -->${escapeHtml(opinion.detailParagraph)}<!-- EVE_OPINION_DETAIL_END -->`
+        `<!-- EVE_OPINION_DETAIL_START -->${linkifyItemNames(escapeHtml(opinion.detailParagraph), allItems)}<!-- EVE_OPINION_DETAIL_END -->`
       );
     }
   }
@@ -906,6 +908,31 @@ function escapeHtml(text: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+/**
+ * Replaces item names in escaped HTML text with links to Eve Tycoon.
+ * Uses a single-pass regex to avoid matching inside already-created links.
+ */
+function linkifyItemNames(escapedText: string, items: AnalysisResult[]): string {
+  if (items.length === 0) return escapedText;
+
+  // Sort by name length descending to prefer longer matches (e.g. "Dense Plagioclase" before "Plagioclase")
+  const sortedItems = [...items].sort((a, b) => b.name.length - a.name.length);
+
+  const nameToId = new Map(sortedItems.map(item => [escapeHtml(item.name), item.id]));
+
+  const pattern = sortedItems
+    .map(item => escapeHtml(item.name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('|');
+
+  return escapedText.replace(new RegExp(pattern, 'g'), (match) => {
+    const id = nameToId.get(match);
+    if (id !== undefined) {
+      return `<a href="https://evetycoon.com/market/${id}" target="_blank">${match}</a>`;
+    }
+    return match;
+  });
 }
 
 // ===== NEWSLETTER FUNCTIONS =====
