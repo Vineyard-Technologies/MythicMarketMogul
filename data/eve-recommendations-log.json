@@ -946,5 +946,163 @@
       "timestamp": "2026-03-10T07:49:30.674Z",
       "environment": "GitHub Actions"
     }
+  },
+  {
+    "date": "2026-03-11T07:47:24.211Z",
+    "highRisk": [
+      {
+        "id": 18,
+        "name": "Plagioclase",
+        "currentPrice": 43,
+        "priceChange": "-35.52",
+        "priceChange7d": "-2.91",
+        "priceChange30d": "14.22",
+        "volatility": "22.16",
+        "momentum": "15.68",
+        "volume": 2328051,
+        "volumeCategory": "Very High",
+        "investmentScore": "100.0",
+        "dataPoints": 402
+      },
+      {
+        "id": 36,
+        "name": "Mexallon",
+        "currentPrice": 71,
+        "priceChange": "-43.82",
+        "priceChange7d": "-3.23",
+        "priceChange30d": "2.29",
+        "volatility": "21.38",
+        "momentum": "12.24",
+        "volume": 752786121,
+        "volumeCategory": "Very High",
+        "investmentScore": "100.0",
+        "dataPoints": 402
+      },
+      {
+        "id": 180,
+        "name": "Proton S",
+        "currentPrice": 6,
+        "priceChange": "-42.15",
+        "priceChange7d": "-7.20",
+        "priceChange30d": "20.90",
+        "volatility": "50.94",
+        "momentum": "11.61",
+        "volume": 23545,
+        "volumeCategory": "Very High",
+        "investmentScore": "100.0",
+        "dataPoints": 402
+      },
+      {
+        "id": 181,
+        "name": "Depleted Uranium S",
+        "currentPrice": 10,
+        "priceChange": "-25.33",
+        "priceChange7d": "-43.85",
+        "priceChange30d": "34.00",
+        "volatility": "48.96",
+        "momentum": "11.70",
+        "volume": 584499,
+        "volumeCategory": "Very High",
+        "investmentScore": "100.0",
+        "dataPoints": 402
+      },
+      {
+        "id": 184,
+        "name": "Phased Plasma S",
+        "currentPrice": 30,
+        "priceChange": "24.78",
+        "priceChange7d": "20.54",
+        "priceChange30d": "25.88",
+        "volatility": "31.69",
+        "momentum": "10.67",
+        "volume": 2194780,
+        "volumeCategory": "Very High",
+        "investmentScore": "100.0",
+        "dataPoints": 402
+      }
+    ],
+    "lowRisk": [
+      {
+        "id": 605,
+        "name": "Heron",
+        "currentPrice": 739700,
+        "priceChange": "5.75",
+        "priceChange7d": "5.99",
+        "priceChange30d": "-25.58",
+        "volatility": "11.55",
+        "momentum": "23.05",
+        "volume": 426,
+        "volumeCategory": "Medium",
+        "investmentScore": "100.0",
+        "dataPoints": 402
+      },
+      {
+        "id": 607,
+        "name": "Imicus",
+        "currentPrice": 729158,
+        "priceChange": "23.70",
+        "priceChange7d": "26.27",
+        "priceChange30d": "37.36",
+        "volatility": "14.07",
+        "momentum": "8.78",
+        "volume": 53,
+        "volumeCategory": "Low",
+        "investmentScore": "100.0",
+        "dataPoints": 402
+      },
+      {
+        "id": 2321,
+        "name": "Polyaramids",
+        "currentPrice": 16930,
+        "priceChange": "16.52",
+        "priceChange7d": "3.80",
+        "priceChange30d": "2.86",
+        "volatility": "9.24",
+        "momentum": "10.08",
+        "volume": 307302,
+        "volumeCategory": "Very High",
+        "investmentScore": "100.0",
+        "dataPoints": 401
+      },
+      {
+        "id": 3089,
+        "name": "Zainou 'Gnome' Shield Operation SP-904",
+        "currentPrice": 122500000,
+        "priceChange": "6.71",
+        "priceChange7d": "8.63",
+        "priceChange30d": "57.89",
+        "volatility": "11.59",
+        "momentum": "16.46",
+        "volume": 1,
+        "volumeCategory": "Very Low",
+        "investmentScore": "100.0",
+        "dataPoints": 315
+      },
+      {
+        "id": 3116,
+        "name": "Eifyr and Co. 'Rogue' High Speed Maneuvering HS-906",
+        "currentPrice": 668300000,
+        "priceChange": "11.17",
+        "priceChange7d": "-0.28",
+        "priceChange30d": "10.04",
+        "volatility": "14.36",
+        "momentum": "9.01",
+        "volume": 1,
+        "volumeCategory": "Very Low",
+        "investmentScore": "100.0",
+        "dataPoints": 160
+      }
+    ],
+    "aiAnalysis": {
+      "introParagraph": "The low-risk segment continues to show steady performance with items like Heron, Imicus, Polyaramids. Their consistent volume and low volatility make them solid choices for traders looking to preserve capital.",
+      "detailParagraph": "On the high-risk side, keep an eye on Plagioclase at 43 ISK with +15.68% momentum. Volatile picks like these can pay off big if you time your trades right."
+    },
+    "metadata": {
+      "itemsAnalyzed": 9976,
+      "itemsFetched": 9977,
+      "analysisTime": "180m 46s",
+      "timestamp": "2026-03-11T07:47:23.942Z",
+      "environment": "GitHub Actions"
+    }
   }
 ]
