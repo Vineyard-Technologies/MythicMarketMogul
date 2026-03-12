@@ -587,8 +587,7 @@ export async function runEVEAutomated(options: RunOptions = {}): Promise<EVEAuto
 async function generateOpinion(analysisData: EVEAutomatedResults, previousResults: EVEAutomatedResults | null = null): Promise<OpinionResult> {
   const token = process.env.GITHUB_TOKEN;
   if (!token) {
-    console.log('⚠️ GITHUB_TOKEN not set. Using default opinion.');
-    return getDefaultOpinion(analysisData);
+    throw new Error('GITHUB_TOKEN not set — cannot generate AI opinion.');
   }
 
   const { highRisk = [], lowRisk = [], marketOverview = {} as MarketOverview, notableMovers = {} as NotableMovers } = analysisData;
@@ -709,85 +708,78 @@ Rules:
 - Do NOT start with a date
 - Separate the two paragraphs with exactly |||SPLIT||| on its own line`;
 
-  try {
-    console.log('🤖 Generating AI opinion via GitHub Models...');
-    const response = await fetch('https://models.github.ai/inference/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: process.env.AI_MODEL || 'openai/gpt-4o-mini',
-        messages: [
-          { role: 'user', content: prompt }
-        ],
-        max_tokens: 400,
-        temperature: 0.8
-      })
-    });
+  const maxRetries = 2;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      if (attempt > 0) {
+        const delay = attempt * 5000;
+        console.log(`🔄 Retrying AI opinion generation (attempt ${attempt + 1}/${maxRetries + 1}) after ${delay / 1000}s...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+      console.log('🤖 Generating AI opinion via GitHub Models...');
+      const response = await fetch('https://models.github.ai/inference/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: process.env.AI_MODEL || 'openai/gpt-4o-mini',
+          messages: [
+            { role: 'user', content: prompt }
+          ],
+          max_tokens: 400,
+          temperature: 0.8
+        })
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`❌ GitHub Models API error (HTTP ${response.status}): ${errorText}`);
-      return getDefaultOpinion(analysisData);
-    }
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ GitHub Models API error (HTTP ${response.status}): ${errorText}`);
+        if (attempt < maxRetries) continue;
+        throw new Error(`GitHub Models API error after ${maxRetries + 1} attempts (HTTP ${response.status}): ${errorText}`);
+      }
 
-    const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
-    const content = data.choices?.[0]?.message?.content?.trim();
+      const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+      const content = data.choices?.[0]?.message?.content?.trim();
 
-    if (!content) {
-      console.error('❌ Empty response from GitHub Models API');
-      return getDefaultOpinion(analysisData);
-    }
+      if (!content) {
+        console.error('❌ Empty response from GitHub Models API');
+        if (attempt < maxRetries) continue;
+        throw new Error(`Empty response from GitHub Models API after ${maxRetries + 1} attempts`);
+      }
 
-    // Split into two paragraphs
-    const parts = content.split('|||SPLIT|||').map(p => p.trim());
-    if (parts.length >= 2) {
-      console.log('✅ AI opinion generated successfully');
-      return {
-        introParagraph: parts[0],
-        detailParagraph: parts[1]
-      };
-    } else {
-      // Fallback: try splitting on double newline
-      const fallbackParts = content.split(/\n\n+/).map(p => p.trim()).filter(p => p.length > 0);
-      if (fallbackParts.length >= 2) {
-        console.log('✅ AI opinion generated successfully (fallback split)');
+      // Split into two paragraphs
+      const parts = content.split('|||SPLIT|||').map(p => p.trim());
+      if (parts.length >= 2) {
+        console.log('✅ AI opinion generated successfully');
         return {
-          introParagraph: fallbackParts[0],
-          detailParagraph: fallbackParts[1]
+          introParagraph: parts[0],
+          detailParagraph: parts[1]
+        };
+      } else {
+        // Fallback: try splitting on double newline
+        const fallbackParts = content.split(/\n\n+/).map(p => p.trim()).filter(p => p.length > 0);
+        if (fallbackParts.length >= 2) {
+          console.log('✅ AI opinion generated successfully (fallback split)');
+          return {
+            introParagraph: fallbackParts[0],
+            detailParagraph: fallbackParts[1]
+          };
+        }
+        console.log('✅ AI opinion generated (single block)');
+        return {
+          introParagraph: content,
+          detailParagraph: ''
         };
       }
-      console.log('✅ AI opinion generated (single block)');
-      return {
-        introParagraph: content,
-        detailParagraph: ''
-      };
+    } catch (error) {
+      console.error(`❌ Failed to generate AI opinion: ${(error as Error).message}`);
+      if (attempt < maxRetries) continue;
+      throw new Error(`Failed to generate AI opinion after ${maxRetries + 1} attempts: ${(error as Error).message}`);
     }
-  } catch (error) {
-    console.error(`❌ Failed to generate AI opinion: ${(error as Error).message}`);
-    return getDefaultOpinion(analysisData);
   }
-}
-
-/**
- * Returns a default opinion when AI generation is unavailable
- */
-function getDefaultOpinion(analysisData: EVEAutomatedResults): OpinionResult {
-  const { highRisk = [], lowRisk = [] } = analysisData;
-
-  const lowRiskNames = lowRisk.slice(0, 3).map(i => i.name).join(', ');
-  const topHighRisk = highRisk[0];
-
-  return {
-    introParagraph: lowRisk.length > 0
-      ? `The low-risk segment continues to show steady performance with items like ${lowRiskNames}. Their consistent volume and low volatility make them solid choices for traders looking to preserve capital.`
-      : 'The low-risk segment is quiet today — check back tomorrow for new opportunities.',
-    detailParagraph: topHighRisk
-      ? `On the high-risk side, keep an eye on ${topHighRisk.name} at ${formatISK(topHighRisk.currentPrice)} with ${parseFloat(topHighRisk.momentum) > 0 ? '+' : ''}${topHighRisk.momentum}% momentum. Volatile picks like these can pay off big if you time your trades right.`
-      : 'No standout high-risk picks today — sometimes the best trade is no trade at all.'
-  };
+  throw new Error('Failed to generate AI opinion: exhausted all retry attempts');
 }
 
 // ===== REPORT GENERATION =====
