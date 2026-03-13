@@ -25,13 +25,13 @@ jobs:
 
     - name: Checkout repository
       if: steps.check-day.outputs.is_wednesday == 'true' || github.event_name == 'workflow_dispatch'
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Setup Node.js
       if: steps.check-day.outputs.is_wednesday == 'true' || github.event_name == 'workflow_dispatch'
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v5
       with:
-        node-version: '18'
+        node-version: '22'
 
     - name: Install dependencies
       if: steps.check-day.outputs.is_wednesday == 'true' || github.event_name == 'workflow_dispatch'
@@ -60,11 +60,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      models: read
+      models: write
     
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         ref: ${{ github.ref }}
       
@@ -72,9 +72,9 @@ jobs:
       run: git pull --rebase origin ${{ github.ref_name }}
 
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v5
       with:
-        node-version: '18'
+        node-version: '22'
         
     - name: Install dependencies
       run: npm install
