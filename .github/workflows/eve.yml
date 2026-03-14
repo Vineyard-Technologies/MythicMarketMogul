@@ -43,7 +43,7 @@ jobs:
 
     - name: Sort items and regions
       if: steps.check-day.outputs.is_wednesday == 'true' || github.event_name == 'workflow_dispatch'
-      run: npm run sort
+      run: npm run sort -- --force
 
     - name: Commit sorted data
       if: steps.check-day.outputs.is_wednesday == 'true' || github.event_name == 'workflow_dispatch'

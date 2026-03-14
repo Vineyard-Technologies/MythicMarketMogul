@@ -9,9 +9,10 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const ROOT_DIR = path.resolve(__dirname, '..');
 
-const ITEMS_FILE = path.join(__dirname, 'data', 'eve-items.json');
-const REGIONS_FILE = path.join(__dirname, 'data', 'eve-regions.json');
+const ITEMS_FILE = path.join(ROOT_DIR, 'data', 'eve-items.json');
+const REGIONS_FILE = path.join(ROOT_DIR, 'data', 'eve-regions.json');
 const USER_AGENT = 'eve-market-sorter/1.0 (GitHub Actions)';
 const DELAY_MS = 1000;
 
@@ -131,7 +132,15 @@ async function main(): Promise<void> {
   console.log('🚀 EVE Items and Regions Sorter');
   console.log('================================');
   console.log('');
-  
+
+  // Weekly gate: only run on Wednesdays unless --force is passed
+  const forceRun = process.argv.includes('--force');
+  const dayOfWeek = new Date().getUTCDay(); // 0=Sun, 3=Wed
+  if (dayOfWeek !== 3 && !forceRun) {
+    console.log('⏭️  Skipping: sort only runs on Wednesdays (pass --force to override).');
+    return;
+  }
+
   // Load regions and items
   console.log('📂 Loading data files...');
   const regionsData: Record<string, number> = JSON.parse(fs.readFileSync(REGIONS_FILE, 'utf-8'));
