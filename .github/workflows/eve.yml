@@ -60,7 +60,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      models: write
+      models: read
     
     steps:
     - name: Checkout repository
